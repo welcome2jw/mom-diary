@@ -6,92 +6,87 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 (CSS 강제 고정) ---
+# --- UI 스타일링 (시스템 테마 호환) ---
 st.markdown("""
     <style>
-    /* 시스템 설정 무시하고 배경/글자색 강제 고정 */
-    html, body, [data-testid="stAppViewContainer"] {
-        background-color: #FFFFFF !important;
-        color: #212121 !important;
-    }
-
-    /* 대제목: 크기 키우고 가운데 정렬 */
+    /* 대제목: 가운데 정렬 및 폰트 확대 */
     h1 { 
-        color: #212121 !important; 
         font-size: 45px !important; 
         font-weight: 800 !important;
         text-align: center;
-        margin-bottom: 35px !important;
+        margin-bottom: 30px !important;
     }
     
-    /* 기록하기 탭의 날짜 크기 확대 */
+    /* 기록하기 탭의 날짜 확대 및 간격 확보 */
     .input-date-text {
         font-size: 32px !important;
         font-weight: bold !important;
-        color: #212121 !important;
-        margin-bottom: 30px !important; /* 아래 섹션과의 간격 */
+        margin-bottom: 25px !important;
     }
 
-    /* 전체 기본 글자색 고정 */
-    p, span, label, .stMarkdown, div { 
-        color: #212121 !important; 
-    }
-
-    /* 2. 포인트 컬러 (Blue) */
+    /* 2. 포인트 컬러 (Blue) 적용 */
+    /* 버튼: 파란 배경 + 흰색 글자 */
     div.stButton > button {
         background-color: #007BFF !important;
-        color: #FFFFFF !important; /* 버튼 글자 흰색 고정 */
+        color: white !important;
         border: none !important;
         border-radius: 8px !important;
         height: 3.5em !important;
         font-weight: bold !important;
     }
     
+    /* 탭 밑줄 */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
     
+    /* 슬라이더 핸들 */
     div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
         background-color: #007BFF !important;
         border: 2px solid #007BFF !important;
     }
 
-    /* 3. 요약 카드 디자인 */
+    /* 3. 요약 카드 디자인 (시스템 테마 대응을 위해 배경색 투명도 조절) */
     .record-card {
-        background-color: #FFFFFF !important;
         border-radius: 15px;
         padding: 22px;
         margin-bottom: 20px;
-        border: 1px solid #EEEEEE;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.05);
     }
     
-    /* 요약보기 날짜: 원래 크기 복구 */
+    /* 요약보기 날짜: 원래 크기(19px) */
     .card-date {
         font-size: 19px !important; 
         font-weight: bold;
-        color: #333333 !important;
     }
     
+    /* 몸무게 강조색 블루 */
     .weight-box {
         font-size: 26px;
         font-weight: 800;
         color: #007BFF !important;
     }
 
+    /* 요약 텍스트 간격 및 구분선 */
     .status-text {
         font-size: 17px;
-        color: #212121 !important;
         margin-top: 12px;
     }
     
-    /* 통증 수치 줄바꿈 스타일 */
+    /* 통증 수치 줄바꿈 */
     .pain-text {
         font-size: 16px;
-        color: #555555 !important;
         margin-top: 5px;
         padding-bottom: 10px;
-        border-bottom: 1px solid #F1F3F5;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+        opacity: 0.8;
+    }
+
+    .memo-text {
+        margin-top: 12px;
+        font-size: 16px;
+        line-height: 1.6;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -107,6 +102,7 @@ except:
 
 st.title("☀️ 오늘 하루 기록")
 
+# 전날 몸무게
 if not df.empty and "몸무게" in df.columns:
     try: last_weight = float(df.iloc[-1]['몸무게'])
     except: last_weight = 55.0
@@ -116,7 +112,7 @@ else:
 tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 
 with tab1:
-    # 날짜 폰트 키우기 및 간격 확보
+    # 큰 날짜 폰트 및 간격
     st.markdown(f'<p class="input-date-text">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
     
     st.write("오늘의 복용 및 주사 여부")
@@ -169,7 +165,7 @@ with tab2:
             if prev_idx in recent_df.index:
                 diff = row['몸무게'] - recent_df.loc[prev_idx, '몸무게']
                 if diff != 0:
-                    diff_text = f"<span style='font-size:15px; color:#888;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
+                    diff_text = f"<span style='font-size:15px; opacity:0.6;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
 
             inj_text = f" | 항암주사 {row['주사']}" if row['주사'] == "O" else ""
 
@@ -177,7 +173,7 @@ with tab2:
             <div class="record-card">
                 <div style="display: flex; justify-content: space-between; align-items: baseline;">
                     <span class="card-date">{formatted_date}</span>
-                    <span class="weight-box">{row['몸무게']} <small style="font-size:16px; color:#007BFF;">kg</small> {diff_text}</span>
+                    <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small> {diff_text}</span>
                 </div>
                 <div class="status-text">
                     아침약 {row['아침약']} | 저녁약 {row['저녁약']}{inj_text}
@@ -185,8 +181,8 @@ with tab2:
                 <div class="pain-text">
                     통증 수치: {row['통증']} / 10
                 </div>
-                <div style="margin-top:12px; font-size:16px; color:#555; line-height:1.6;">
-                    {row['메모'] if row['메모'] != 'X' else '메모가 없습니다.'}
+                <div class="memo-text">
+                    {row['메모'] if row['메모'] != 'X' else '기록된 메모가 없습니다.'}
                 </div>
             </div>
             """, unsafe_allow_html=True)
