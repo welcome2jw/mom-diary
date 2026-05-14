@@ -6,10 +6,15 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 (블루 포인트 컬러 강제 적용) ---
+# --- UI 스타일링 (레드 원천 차단 및 블루 강제 주입) ---
 st.markdown("""
     <style>
-    /* 1. 대제목 및 날짜 */
+    /* 1. 기본 테마 색상 강제 오버라이드 */
+    :root {
+        --primary-color: #007BFF !important;
+    }
+
+    /* 2. 대제목 및 날짜 */
     h1 { 
         font-size: 40px !important; 
         font-weight: 800 !important;
@@ -22,7 +27,7 @@ st.markdown("""
         margin-bottom: 25px !important;
     }
 
-    /* 2. 버튼 블루 고정 */
+    /* 3. 버튼 블루 고정 */
     div.stButton > button {
         background-color: #007BFF !important;
         color: white !important;
@@ -32,28 +37,29 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* 3. 탭(Tabs) 블루 고정 */
-    /* 선택된 탭 밑줄 */
+    /* 4. 탭(Tabs) 블루 고정 (빨간색 라인 제거) */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
-    /* 선택된 탭 글자색 */
-    div[data-baseweb="tab"] div[aria-selected="true"] p {
+    div[data-baseweb="tab-list"] button[aria-selected="true"] p {
         color: #007BFF !important;
     }
 
-    /* 4. 라디오 버튼(복용 선택) 블루 고정 */
-    /* 선택된 항목의 외곽선 및 라벨 색상 */
-    div[data-testid="stRadio"] label[data-baseweb="radio"] div:first-child div:nth-child(2) {
+    /* 5. 라디오 버튼(복용 선택) 레드 박멸 */
+    /* 선택된 원의 색상 */
+    div[role="radiogroup"] div[data-active="true"] {
         background-color: #007BFF !important;
     }
-    /* 라디오 버튼 체크 표시 */
-    div[data-testid="stRadio"] input[type="radio"]:checked + div {
+    /* 체크된 라디오 버튼의 테두리 */
+    input[type="radio"]:checked + div {
         border-color: #007BFF !important;
+    }
+    /* 라디오 버튼 내부의 작은 점 */
+    input[type="radio"]:checked + div > div {
+        background-color: #007BFF !important;
     }
     
     /* 모바일 터치 영역 스타일 */
-    div[data-testid="stRadio"] > div { gap: 10px; }
     div[data-testid="stRadio"] label {
         background-color: rgba(128, 128, 128, 0.05);
         padding: 10px 15px;
@@ -62,7 +68,7 @@ st.markdown("""
         width: 100%;
     }
 
-    /* 5. 슬라이더 블루 고정 */
+    /* 6. 슬라이더(통증) 블루 고정 */
     div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
         background-color: #007BFF !important;
         border: 2px solid #007BFF !important;
@@ -71,7 +77,7 @@ st.markdown("""
         background-color: #007BFF !important;
     }
 
-    /* 요약 카드 및 기타 */
+    /* 요약 카드 */
     .record-card {
         border-radius: 15px;
         padding: 22px;
@@ -116,7 +122,6 @@ tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 with tab1:
     st.markdown(f'<p class="input-date-text">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
     
-    # 순서: 약 복용 > 주사 맞음 > 복용 안함
     options = ["약 복용", "주사 맞음", "복용 안함"]
     
     st.write("아침 기록")
@@ -164,12 +169,14 @@ with tab2:
             
             diff_text = ""
             sorted_all = recent_df.sort_values(by='날짜', ascending=True)
-            target_pos = sorted_all.index.get_loc(i)
-            if target_pos > 0:
-                prev_w = sorted_all.iloc[target_pos-1]['몸무게']
-                diff = row['몸무게'] - prev_w
-                if diff != 0:
-                    diff_text = f"<span style='font-size:15px; opacity:0.6;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
+            try:
+                target_pos = sorted_all.index.get_loc(i)
+                if target_pos > 0:
+                    prev_w = sorted_all.iloc[target_pos-1]['몸무게']
+                    diff = row['몸무게'] - prev_w
+                    if diff != 0:
+                        diff_text = f"<span style='font-size:15px; opacity:0.6;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
+            except: pass
 
             m_val = row.get('아침기록', row.get('아침약', 'X'))
             e_val = row.get('저녁기록', row.get('저녁약', 'X'))
