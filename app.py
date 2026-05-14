@@ -6,15 +6,9 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 (레드 원천 차단 및 블루 강제 주입) ---
+# --- UI 스타일링 ---
 st.markdown("""
     <style>
-    /* 1. 기본 테마 색상 강제 오버라이드 */
-    :root {
-        --primary-color: #007BFF !important;
-    }
-
-    /* 2. 대제목 및 날짜 */
     h1 { 
         font-size: 40px !important; 
         font-weight: 800 !important;
@@ -26,8 +20,6 @@ st.markdown("""
         font-weight: bold !important;
         margin-bottom: 25px !important;
     }
-
-    /* 3. 버튼 블루 고정 */
     div.stButton > button {
         background-color: #007BFF !important;
         color: white !important;
@@ -36,30 +28,15 @@ st.markdown("""
         height: 3.5em !important;
         font-weight: bold !important;
     }
-    
-    /* 4. 탭(Tabs) 블루 고정 (빨간색 라인 제거) */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
-    div[data-baseweb="tab-list"] button[aria-selected="true"] p {
+    div[data-baseweb="tab"] div[aria-selected="true"] {
         color: #007BFF !important;
     }
-
-    /* 5. 라디오 버튼(복용 선택) 레드 박멸 */
-    /* 선택된 원의 색상 */
-    div[role="radiogroup"] div[data-active="true"] {
-        background-color: #007BFF !important;
+    div[data-testid="stRadio"] > div {
+        gap: 10px;
     }
-    /* 체크된 라디오 버튼의 테두리 */
-    input[type="radio"]:checked + div {
-        border-color: #007BFF !important;
-    }
-    /* 라디오 버튼 내부의 작은 점 */
-    input[type="radio"]:checked + div > div {
-        background-color: #007BFF !important;
-    }
-    
-    /* 모바일 터치 영역 스타일 */
     div[data-testid="stRadio"] label {
         background-color: rgba(128, 128, 128, 0.05);
         padding: 10px 15px;
@@ -67,17 +44,6 @@ st.markdown("""
         border: 1px solid rgba(128, 128, 128, 0.1);
         width: 100%;
     }
-
-    /* 6. 슬라이더(통증) 블루 고정 */
-    div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
-        background-color: #007BFF !important;
-        border: 2px solid #007BFF !important;
-    }
-    div[data-testid="stSlider"] [data-baseweb="slider"] div[aria-valuemax] {
-        background-color: #007BFF !important;
-    }
-
-    /* 요약 카드 */
     .record-card {
         border-radius: 15px;
         padding: 22px;
@@ -98,8 +64,10 @@ st.markdown("""
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# 데이터 로드 로직 개선
 try:
     df = conn.read(ttl=0)
+    # 데이터가 비어있지 않은지 확인
     if df is not None and not df.empty:
         df = df.fillna('X').replace(r'^\s*$', 'X', regex=True)
     else:
@@ -109,6 +77,7 @@ except:
 
 st.title("오늘 하루 기록")
 
+# 기본 몸무게 설정
 last_weight = 55.0
 if not df.empty and "몸무게" in df.columns:
     try:
@@ -122,7 +91,7 @@ tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 with tab1:
     st.markdown(f'<p class="input-date-text">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
     
-    options = ["약 복용", "주사 맞음", "복용 안함"]
+    options = ["약 복용", "주사 맞음", "기록 안함"]
     
     st.write("아침 기록")
     morning_status = st.radio("아침", options, label_visibility="collapsed", key="morning_radio", horizontal=True)
@@ -153,31 +122,40 @@ with tab1:
         updated_df = pd.concat([df, new_row], ignore_index=True)
         conn.update(data=updated_df)
         st.success("기록이 저장되었습니다.")
-        st.rerun()
+        st.rerun() # 저장 후 화면 갱신
 
 with tab2:
     if not df.empty:
         recent_df = df.copy()
+        
+        # [핵심 수정] 날짜 변환 시 에러 처리 강화
         recent_df['날짜'] = pd.to_datetime(recent_df['날짜'], errors='coerce')
+        # 변환 실패한 행 제거
         recent_df = recent_df.dropna(subset=['날짜'])
+        
+        # 몸무게 숫자 변환
         recent_df['몸무게'] = pd.to_numeric(recent_df['몸무게'], errors='coerce').fillna(0)
         
+        # 최신순 정렬 후 상위 10개
         display_df = recent_df.sort_values(by='날짜', ascending=False).head(10)
         
         for i, row in display_df.iterrows():
             formatted_date = row['날짜'].strftime('%m월 %d일')
             
+            # 몸무게 증감 계산 (정렬 전 원본 인덱스 활용 시 주의)
             diff_text = ""
-            sorted_all = recent_df.sort_values(by='날짜', ascending=True)
-            try:
+            current_idx = recent_df.index.get_loc(i)
+            if current_idx + 1 < len(recent_df): # 시간순으로 정렬했을 때 이전 데이터가 있는지 확인
+                # 실제 시간순 상의 이전 데이터는 정렬된 상태에서 다음 행임
+                sorted_all = recent_df.sort_values(by='날짜', ascending=True)
                 target_pos = sorted_all.index.get_loc(i)
                 if target_pos > 0:
                     prev_w = sorted_all.iloc[target_pos-1]['몸무게']
                     diff = row['몸무게'] - prev_w
                     if diff != 0:
                         diff_text = f"<span style='font-size:15px; opacity:0.6;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
-            except: pass
 
+            # 기존 컬럼(아침약/저녁약)과 새 컬럼(아침기록/저녁기록) 호환성 유지
             m_val = row.get('아침기록', row.get('아침약', 'X'))
             e_val = row.get('저녁기록', row.get('저녁약', 'X'))
 
