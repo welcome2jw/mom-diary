@@ -6,25 +6,23 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 (시스템 테마 호환 + 블루 포인트 + 모바일 최적화) ---
+# --- UI 스타일링 (블루 포인트 컬러 강제 적용) ---
 st.markdown("""
     <style>
-    /* 대제목 스타일 */
+    /* 1. 대제목 및 날짜 */
     h1 { 
         font-size: 40px !important; 
         font-weight: 800 !important;
         text-align: center;
         margin-bottom: 30px !important;
     }
-    
-    /* 기록하기 날짜 */
     .input-date-text {
         font-size: 30px !important;
         font-weight: bold !important;
         margin-bottom: 25px !important;
     }
 
-    /* 버튼 및 포인트 컬러 (Blue) */
+    /* 2. 버튼 블루 고정 */
     div.stButton > button {
         background-color: #007BFF !important;
         color: white !important;
@@ -34,18 +32,28 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* 탭 밑줄 및 텍스트 블루 */
+    /* 3. 탭(Tabs) 블루 고정 */
+    /* 선택된 탭 밑줄 */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
-    div[data-baseweb="tab"] div[aria-selected="true"] {
+    /* 선택된 탭 글자색 */
+    div[data-baseweb="tab"] div[aria-selected="true"] p {
         color: #007BFF !important;
     }
-    
-    /* 라디오 버튼 UI 개선 (모바일 터치 영역 확대) */
-    div[data-testid="stRadio"] > div {
-        gap: 10px;
+
+    /* 4. 라디오 버튼(복용 선택) 블루 고정 */
+    /* 선택된 항목의 외곽선 및 라벨 색상 */
+    div[data-testid="stRadio"] label[data-baseweb="radio"] div:first-child div:nth-child(2) {
+        background-color: #007BFF !important;
     }
+    /* 라디오 버튼 체크 표시 */
+    div[data-testid="stRadio"] input[type="radio"]:checked + div {
+        border-color: #007BFF !important;
+    }
+    
+    /* 모바일 터치 영역 스타일 */
+    div[data-testid="stRadio"] > div { gap: 10px; }
     div[data-testid="stRadio"] label {
         background-color: rgba(128, 128, 128, 0.05);
         padding: 10px 15px;
@@ -54,7 +62,16 @@ st.markdown("""
         width: 100%;
     }
 
-    /* 요약 카드 */
+    /* 5. 슬라이더 블루 고정 */
+    div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+        background-color: #007BFF !important;
+        border: 2px solid #007BFF !important;
+    }
+    div[data-testid="stSlider"] [data-baseweb="slider"] div[aria-valuemax] {
+        background-color: #007BFF !important;
+    }
+
+    /* 요약 카드 및 기타 */
     .record-card {
         border-radius: 15px;
         padding: 22px;
@@ -62,7 +79,6 @@ st.markdown("""
         border: 1px solid rgba(128, 128, 128, 0.2);
         box-shadow: 0px 4px 12px rgba(0,0,0,0.05);
     }
-    
     .card-date { font-size: 19px !important; font-weight: bold; }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     .status-text { font-size: 17px; margin-top: 12px; font-weight: 500; }
@@ -78,24 +94,30 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 try:
     df = conn.read(ttl=0)
-    df = df.fillna('X').replace(r'^\s*$', 'X', regex=True)
+    if df is not None and not df.empty:
+        df = df.fillna('X').replace(r'^\s*$', 'X', regex=True)
+    else:
+        df = pd.DataFrame(columns=["날짜", "아침기록", "저녁기록", "몸무게", "통증", "메모"])
 except:
     df = pd.DataFrame(columns=["날짜", "아침기록", "저녁기록", "몸무게", "통증", "메모"])
 
 st.title("오늘 하루 기록")
 
+last_weight = 55.0
 if not df.empty and "몸무게" in df.columns:
-    try: last_weight = float(df.iloc[-1]['몸무게'])
-    except: last_weight = 55.0
-else: last_weight = 55.0
+    try:
+        valid_weights = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
+        if not valid_weights.empty:
+            last_weight = float(valid_weights.iloc[-1])
+    except: pass
 
 tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 
 with tab1:
     st.markdown(f'<p class="input-date-text">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
     
-    # 보기 순서: 약 복용 > 주사 맞음 > 기록 안함
-    options = ["약 복용", "주사 맞음", "기록 안함"]
+    # 순서: 약 복용 > 주사 맞음 > 복용 안함
+    options = ["약 복용", "주사 맞음", "복용 안함"]
     
     st.write("아침 기록")
     morning_status = st.radio("아침", options, label_visibility="collapsed", key="morning_radio", horizontal=True)
@@ -126,29 +148,31 @@ with tab1:
         updated_df = pd.concat([df, new_row], ignore_index=True)
         conn.update(data=updated_df)
         st.success("기록이 저장되었습니다.")
+        st.rerun()
 
 with tab2:
     if not df.empty:
         recent_df = df.copy()
+        recent_df['날짜'] = pd.to_datetime(recent_df['날짜'], errors='coerce')
+        recent_df = recent_df.dropna(subset=['날짜'])
         recent_df['몸무게'] = pd.to_numeric(recent_df['몸무게'], errors='coerce').fillna(0)
-        recent_df['날짜'] = pd.to_datetime(recent_df['날짜'])
         
-        # 최신순 정렬
         display_df = recent_df.sort_values(by='날짜', ascending=False).head(10)
         
         for i, row in display_df.iterrows():
             formatted_date = row['날짜'].strftime('%m월 %d일')
             
-            # 몸무게 증감 계산
-            prev_idx = i - 1
             diff_text = ""
-            if prev_idx in df.index:
-                try:
-                    prev_w = float(df.loc[prev_idx, '몸무게'])
-                    diff = float(row['몸무게']) - prev_w
-                    if diff != 0:
-                        diff_text = f"<span style='font-size:15px; opacity:0.6;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
-                except: pass
+            sorted_all = recent_df.sort_values(by='날짜', ascending=True)
+            target_pos = sorted_all.index.get_loc(i)
+            if target_pos > 0:
+                prev_w = sorted_all.iloc[target_pos-1]['몸무게']
+                diff = row['몸무게'] - prev_w
+                if diff != 0:
+                    diff_text = f"<span style='font-size:15px; opacity:0.6;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
+
+            m_val = row.get('아침기록', row.get('아침약', 'X'))
+            e_val = row.get('저녁기록', row.get('저녁약', 'X'))
 
             st.markdown(f"""
             <div class="record-card">
@@ -157,7 +181,7 @@ with tab2:
                     <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small> {diff_text}</span>
                 </div>
                 <div class="status-text">
-                    아침: {row['아침기록']} | 저녁: {row['저녁기록']}
+                    아침: {m_val} | 저녁: {e_val}
                 </div>
                 <div class="pain-text">
                     통증 수치: {row['통증']} / 10
