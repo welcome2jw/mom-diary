@@ -12,44 +12,39 @@ st.markdown("""
     /* 1. 배경 및 기본 설정 */
     .stApp { background-color: #FFFFFF; }
     
-    /* 대제목 스타일: 폰트 크기를 더 키우고 가운데 정렬 */
+    /* 대제목: 더 크게 강조 */
     h1 { 
         color: #212121 !important; 
-        font-size: 42px !important; /* 32px에서 42px로 확대 */
-        font-weight: 800 !important;
+        font-size: 48px !important; 
+        font-weight: 900 !important;
         text-align: center;
-        margin-bottom: 35px !important;
-        white-space: nowrap;
+        margin-bottom: 40px !important;
     }
     
-    /* 전체 글자색 및 기본 폰트 */
-    p, span, label, .stMarkdown { 
-        color: #212121 !important; 
-        font-size: 18px !important;
+    /* 기록하기 탭의 날짜 폰트 */
+    .input-date {
+        font-size: 32px !important;
+        font-weight: bold;
+        color: #007BFF;
+        margin-bottom: 25px !important; /* 스페이싱 추가 */
     }
-
-    /* 2. 포인트 컬러 변경 (Blue) */
-    /* 버튼 색상 강제 변경 */
+    
+    /* 2. 포인트 컬러 (Blue) 및 버튼 설정 */
     div.stButton > button {
         background-color: #007BFF !important;
-        color: white !important;
+        color: #FFFFFF !important; /* 글자색 흰색 강제 */
         border: none !important;
-        border-radius: 8px !important;
-        height: 3em !important;
+        border-radius: 10px !important;
+        height: 3.5em !important;
+        font-size: 18px !important;
         font-weight: bold !important;
     }
     
-    /* 탭 밑줄 색상 변경 */
+    /* 탭 디자인 */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
     
-    /* 슬라이더(통증 정도) 핸들 색상 변경 */
-    div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
-        background-color: #007BFF !important;
-        border: 2px solid #007BFF !important;
-    }
-
     /* 3. 요약 카드 디자인 */
     .record-card {
         background-color: #FFFFFF;
@@ -60,42 +55,32 @@ st.markdown("""
         box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
     }
     
-    /* 카드 날짜 폰트 확대 */
+    /* 요약보기 날짜: 원래 크기로 복구 */
     .card-date {
-        font-size: 24px !important; /* 19px에서 24px로 확대 */
+        font-size: 19px !important; 
         font-weight: bold;
-        color: #333333;
+        color: #444444;
     }
     
-    /* 몸무게 강조 */
     .weight-box {
-        font-size: 28px;
+        font-size: 26px;
         font-weight: 800;
-        color: #007BFF; /* 강조색 블루 */
-        text-align: right;
+        color: #007BFF;
     }
-    .weight-diff {
-        font-size: 15px;
-        font-weight: normal;
-        color: #888888;
-        margin-left: 6px;
-    }
-    
-    /* 항목 텍스트 스타일 */
-    .status-text {
+
+    /* 항목 텍스트 스타일 (줄바꿈용) */
+    .status-row {
         font-size: 17px;
         color: #212121;
-        margin-top: 12px;
-        padding: 10px 0;
-        border-bottom: 1px solid #F1F3F5;
+        margin-top: 10px;
+        padding: 5px 0;
     }
     
-    /* 메모 섹션 */
-    .memo-content {
-        margin-top: 15px;
+    .pain-row {
         font-size: 16px;
         color: #555555;
-        line-height: 1.6;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #F1F3F5;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -103,29 +88,27 @@ st.markdown("""
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 데이터 불러오기 및 전처리
+# 데이터 불러오기
 try:
     df = conn.read(ttl=0)
-    df = df.fillna('X')
-    df = df.replace(r'^\s*$', 'X', regex=True)
+    df = df.fillna('X').replace(r'^\s*$', 'X', regex=True)
 except:
     df = pd.DataFrame(columns=["날짜", "아침약", "저녁약", "주사", "몸무게", "통증", "메모"])
 
 st.title("☀️ 오늘 하루 기록")
 
-# 전날 몸무게 가져오기
+# 전날 몸무게
 if not df.empty and "몸무게" in df.columns:
-    try:
-        last_weight = float(df.iloc[-1]['몸무게'])
-    except:
-        last_weight = 55.0
-else:
-    last_weight = 55.0
+    try: last_weight = float(df.iloc[-1]['몸무게'])
+    except: last_weight = 55.0
+else: last_weight = 55.0
 
 tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 
 with tab1:
-    st.subheader(f"{datetime.now().strftime('%Y년 %m월 %d일')}")
+    # 기록하기 날짜 폰트 키우기 및 스페이싱
+    st.markdown(f'<p class="input-date">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
+    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True) # 간격 추가
     
     st.write("오늘의 복용 및 주사 여부")
     col1, col2, col3 = st.columns(3)
@@ -140,7 +123,7 @@ with tab1:
     st.divider()
 
     st.write("오늘의 몸무게 (kg)")
-    weight = st.number_input("조정 버튼으로 맞춰주세요.", min_value=30.0, max_value=120.0, value=last_weight, step=0.1, label_visibility="collapsed")
+    weight = st.number_input("몸무게 입력", min_value=30.0, max_value=120.0, value=last_weight, step=0.1, label_visibility="collapsed")
     
     st.divider()
     
@@ -174,36 +157,34 @@ with tab2:
         
         for i, row in display_df.iterrows():
             try:
-                raw_date = pd.to_datetime(row['날짜'])
-                formatted_date = raw_date.strftime('%m월 %d일')
+                formatted_date = pd.to_datetime(row['날짜']).strftime('%m월 %d일')
             except:
                 formatted_date = str(row['날짜'])
             
-            # 몸무게 증감 계산
+            # 몸무게 증감
             prev_idx = i - 1
             diff_text = ""
             if prev_idx in recent_df.index:
-                prev_w = recent_df.loc[prev_idx, '몸무게']
-                curr_w = row['몸무게']
-                diff = curr_w - prev_w
-                if diff > 0:
-                    diff_text = f"<span class='weight-diff'>(+{diff:.1f}kg)</span>"
-                elif diff < 0:
-                    diff_text = f"<span class='weight-diff'>({diff:.1f}kg)</span>"
+                diff = row['몸무게'] - recent_df.loc[prev_idx, '몸무게']
+                if diff != 0:
+                    diff_text = f"<span style='font-size:15px; color:#888;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
 
-            # 항암주사 조건부 표시
-            injection_text = f" | 항암주사 {row['주사']}" if row['주사'] == "O" else ""
+            # 항암주사 포함 여부
+            inj_text = f" | 항암주사 {row['주사']}" if row['주사'] == "O" else ""
 
             st.markdown(f"""
             <div class="record-card">
                 <div style="display: flex; justify-content: space-between; align-items: baseline;">
                     <span class="card-date">{formatted_date}</span>
-                    <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small>{diff_text}</span>
+                    <span class="weight-box">{row['몸무게']} <small style="font-size:15px;">kg</small> {diff_text}</span>
                 </div>
-                <div class="status-text">
-                    아침약 {row['아침약']} | 저녁약 {row['저녁약']}{injection_text} | 통증 {row['통증']}
+                <div class="status-row">
+                    아침약 {row['아침약']} | 저녁약 {row['저녁약']}{inj_text}
                 </div>
-                <div class="memo-content">
+                <div class="pain-row">
+                    통증 수치: {row['통증']}
+                </div>
+                <div style="margin-top:15px; font-size:16px; color:#555; line-height:1.6;">
                     {row['메모'] if row['메모'] != 'X' else '메모가 없습니다.'}
                 </div>
             </div>
