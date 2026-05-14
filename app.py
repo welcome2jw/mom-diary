@@ -12,27 +12,29 @@ st.markdown("""
     /* 1. 배경 및 기본 설정 */
     .stApp { background-color: #FFFFFF; }
     
-    /* 대제목: 더 크게 강조 */
+    /* 대제목: 폰트 크기 대폭 확대 및 가운데 정렬 */
     h1 { 
         color: #212121 !important; 
-        font-size: 48px !important; 
+        font-size: 45px !important; 
         font-weight: 900 !important;
         text-align: center;
-        margin-bottom: 40px !important;
+        margin-bottom: 30px !important;
     }
     
-    /* 기록하기 탭의 날짜 폰트 */
+    /* 기록하기 탭의 날짜 폰트 확대 */
     .input-date {
-        font-size: 32px !important;
+        font-size: 35px !important;
         font-weight: bold;
         color: #007BFF;
-        margin-bottom: 25px !important; /* 스페이싱 추가 */
+        text-align: left;
+        margin-bottom: 5px !important;
     }
-    
+
     /* 2. 포인트 컬러 (Blue) 및 버튼 설정 */
+    /* 버튼 배경 파랑, 글자색 흰색 고정 */
     div.stButton > button {
         background-color: #007BFF !important;
-        color: #FFFFFF !important; /* 글자색 흰색 강제 */
+        color: #FFFFFF !important;
         border: none !important;
         border-radius: 10px !important;
         height: 3.5em !important;
@@ -40,47 +42,72 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* 탭 디자인 */
+    /* 탭 밑줄 파란색 */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
     
+    /* 슬라이더 핸들 파란색 */
+    div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+        background-color: #007BFF !important;
+        border: 2px solid #007BFF !important;
+    }
+
     /* 3. 요약 카드 디자인 */
     .record-card {
         background-color: #FFFFFF;
         border-radius: 15px;
-        padding: 25px;
+        padding: 22px;
         margin-bottom: 20px;
         border: 1px solid #EEEEEE;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.06);
     }
     
-    /* 요약보기 날짜: 원래 크기로 복구 */
+    /* 요약보기 날짜: 원래 크기로 (19px) */
     .card-date {
         font-size: 19px !important; 
         font-weight: bold;
-        color: #444444;
+        color: #333333;
     }
     
+    /* 몸무게 강조 (파란색) */
     .weight-box {
         font-size: 26px;
         font-weight: 800;
         color: #007BFF;
+        text-align: right;
     }
-
-    /* 항목 텍스트 스타일 (줄바꿈용) */
+    
+    /* 몸무게 증감 (중립적인 회색) */
+    .weight-diff {
+        font-size: 15px;
+        font-weight: normal;
+        color: #888888;
+        margin-left: 5px;
+    }
+    
+    /* 약 기록 줄 */
     .status-row {
         font-size: 17px;
         color: #212121;
         margin-top: 10px;
-        padding: 5px 0;
     }
     
+    /* 통증 기록 줄 (별도 분리) */
     .pain-row {
         font-size: 16px;
         color: #555555;
+        margin-top: 5px;
         padding-bottom: 10px;
-        border-bottom: 1px solid #F1F3F5;
+        border-bottom: 1px solid #F8F9FA;
+    }
+    
+    /* 메모 섹션 */
+    .memo-content {
+        margin-top: 12px;
+        font-size: 16px;
+        color: #444444;
+        line-height: 1.6;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -88,9 +115,10 @@ st.markdown("""
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 데이터 불러오기
+# 데이터 불러오기 및 전처리
 try:
     df = conn.read(ttl=0)
+    # nan 값을 'X'로 변경
     df = df.fillna('X').replace(r'^\s*$', 'X', regex=True)
 except:
     df = pd.DataFrame(columns=["날짜", "아침약", "저녁약", "주사", "몸무게", "통증", "메모"])
@@ -106,9 +134,11 @@ else: last_weight = 55.0
 tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 
 with tab1:
-    # 기록하기 날짜 폰트 키우기 및 스페이싱
+    # 1. 기록하기 날짜 (폰트 크게)
     st.markdown(f'<p class="input-date">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
-    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True) # 간격 추가
+    
+    # 2. 날짜와 체크박스 사이 간격 늘리기
+    st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
     
     st.write("오늘의 복용 및 주사 여부")
     col1, col2, col3 = st.columns(3)
@@ -123,7 +153,7 @@ with tab1:
     st.divider()
 
     st.write("오늘의 몸무게 (kg)")
-    weight = st.number_input("몸무게 입력", min_value=30.0, max_value=120.0, value=last_weight, step=0.1, label_visibility="collapsed")
+    weight = st.number_input("몸무게 조정", min_value=30.0, max_value=120.0, value=last_weight, step=0.1, label_visibility="collapsed")
     
     st.divider()
     
@@ -134,6 +164,7 @@ with tab1:
     
     notes = st.text_area("메모 (기분이나 증상)", placeholder="오늘 하루는 어떠셨나요?")
 
+    # 3. 저장 버튼 (파란 배경 + 흰색 글자)
     if st.button("기록 저장하기", use_container_width=True):
         new_row = pd.DataFrame([{
             "날짜": datetime.now().strftime('%Y-%m-%d'),
@@ -152,8 +183,9 @@ with tab1:
 with tab2:
     if not df.empty:
         recent_df = df.copy()
+        # 몸무게 계산을 위해 숫자형 변환
         recent_df['몸무게'] = pd.to_numeric(recent_df['몸무게'], errors='coerce').fillna(0)
-        display_df = recent_df.tail(10).iloc[::-1]
+        display_df = recent_df.tail(10).iloc[::-1] # 최신순 10개
         
         for i, row in display_df.iterrows():
             try:
@@ -161,31 +193,33 @@ with tab2:
             except:
                 formatted_date = str(row['날짜'])
             
-            # 몸무게 증감
+            # 몸무게 증감 계산
             prev_idx = i - 1
             diff_text = ""
             if prev_idx in recent_df.index:
-                diff = row['몸무게'] - recent_df.loc[prev_idx, '몸무게']
+                prev_w = recent_df.loc[prev_idx, '몸무게']
+                curr_w = row['몸무게']
+                diff = curr_w - prev_w
                 if diff != 0:
-                    diff_text = f"<span style='font-size:15px; color:#888;'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
+                    diff_text = f"<span class='weight-diff'>({'+' if diff>0 else ''}{diff:.1f}kg)</span>"
 
-            # 항암주사 포함 여부
+            # 항암주사 조건부 표시 (O일 때만 표시)
             inj_text = f" | 항암주사 {row['주사']}" if row['주사'] == "O" else ""
 
             st.markdown(f"""
             <div class="record-card">
                 <div style="display: flex; justify-content: space-between; align-items: baseline;">
                     <span class="card-date">{formatted_date}</span>
-                    <span class="weight-box">{row['몸무게']} <small style="font-size:15px;">kg</small> {diff_text}</span>
+                    <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small>{diff_text}</span>
                 </div>
                 <div class="status-row">
                     아침약 {row['아침약']} | 저녁약 {row['저녁약']}{inj_text}
                 </div>
                 <div class="pain-row">
-                    통증 수치: {row['통증']}
+                    통증 수치: {row['통증']} / 10
                 </div>
-                <div style="margin-top:15px; font-size:16px; color:#555; line-height:1.6;">
-                    {row['메모'] if row['메모'] != 'X' else '메모가 없습니다.'}
+                <div class="memo-content">
+                    {row['메모'] if row['메모'] != 'X' else '기록된 메모가 없습니다.'}
                 </div>
             </div>
             """, unsafe_allow_html=True)
