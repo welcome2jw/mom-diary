@@ -6,7 +6,7 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 (시스템 테마 호환) ---
+# --- UI 스타일링 (시스템 테마 호환 + 블루 포인트) ---
 st.markdown("""
     <style>
     /* 대제목: 가운데 정렬 및 폰트 확대 */
@@ -24,8 +24,9 @@ st.markdown("""
         margin-bottom: 25px !important;
     }
 
-    /* 2. 포인트 컬러 (Blue) 적용 */
-    /* 버튼: 파란 배경 + 흰색 글자 */
+    /* --- 포인트 컬러 (Blue) 적용 --- */
+    
+    /* 1. 버튼: 파란 배경 + 흰색 글자 */
     div.stButton > button {
         background-color: #007BFF !important;
         color: white !important;
@@ -35,18 +36,26 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* 탭 밑줄 */
+    /* 2. 탭(Tabs) 선택 시 빨간색 라인 -> 파란색으로 변경 */
     div[data-baseweb="tab-highlight-spinner"] {
         background-color: #007BFF !important;
     }
     
-    /* 슬라이더 핸들 */
+    /* 탭 텍스트 선택 시 색상 */
+    div[data-baseweb="tab"] div[aria-selected="true"] {
+        color: #007BFF !important;
+    }
+    
+    /* 3. 슬라이더(통증 수치) 핸들 및 트랙 */
     div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
         background-color: #007BFF !important;
         border: 2px solid #007BFF !important;
     }
+    div[data-testid="stSlider"] [data-baseweb="slider"] [aria-valuemax] {
+        background: #007BFF !important;
+    }
 
-    /* 3. 요약 카드 디자인 (시스템 테마 대응을 위해 배경색 투명도 조절) */
+    /* 요약 카드 디자인 */
     .record-card {
         border-radius: 15px;
         padding: 22px;
@@ -55,26 +64,22 @@ st.markdown("""
         box-shadow: 0px 4px 12px rgba(0,0,0,0.05);
     }
     
-    /* 요약보기 날짜: 원래 크기(19px) */
     .card-date {
         font-size: 19px !important; 
         font-weight: bold;
     }
     
-    /* 몸무게 강조색 블루 */
     .weight-box {
         font-size: 26px;
         font-weight: 800;
         color: #007BFF !important;
     }
 
-    /* 요약 텍스트 간격 및 구분선 */
     .status-text {
         font-size: 17px;
         margin-top: 12px;
     }
     
-    /* 통증 수치 줄바꿈 */
     .pain-text {
         font-size: 16px;
         margin-top: 5px;
@@ -102,7 +107,6 @@ except:
 
 st.title("☀️ 오늘 하루 기록")
 
-# 전날 몸무게
 if not df.empty and "몸무게" in df.columns:
     try: last_weight = float(df.iloc[-1]['몸무게'])
     except: last_weight = 55.0
@@ -112,7 +116,7 @@ else:
 tab1, tab2 = st.tabs(["기록하기", "요약보기"])
 
 with tab1:
-    # 큰 날짜 폰트 및 간격
+    # 큰 날짜 및 간격
     st.markdown(f'<p class="input-date-text">{datetime.now().strftime("%Y년 %m월 %d일")}</p>', unsafe_allow_html=True)
     
     st.write("오늘의 복용 및 주사 여부")
@@ -159,7 +163,6 @@ with tab2:
             except:
                 formatted_date = str(row['날짜'])
             
-            # 몸무게 증감
             prev_idx = i - 1
             diff_text = ""
             if prev_idx in recent_df.index:
