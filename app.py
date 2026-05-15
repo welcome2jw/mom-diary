@@ -1,7 +1,8 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
@@ -32,25 +33,35 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 시트 연결 (서비스 계정 인증 필수)
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# 데이터 로드 함수 (에러 방지 강화)
-def load_data():
+# --- 구글 시트 직접 연결 함수 ---
+def get_gspread_client():
     try:
-        # worksheet 이름을 명시적으로 지정
-        main_df = conn.read(worksheet="Records", ttl=0)
-    except:
-        main_df = pd.DataFrame(columns=["날짜", "아침기록", "저녁기록", "몸무게", "통증", "메모"])
-    
-    try:
-        c_df = conn.read(worksheet="차수정보", ttl=0)
-    except:
-        c_df = pd.DataFrame(columns=["차수", "시작일"])
-        
-    return main_df, c_df
+        # Secrets에서 서비스 계정 정보를 가져옵니다.
+        creds_dict = st.secrets["connections"]["gsheets"]
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"인증 설정 오류: {e}")
+        return None
 
-df, cycle_df = load_data()
+def load_data(worksheet_name):
+    try:
+        client = get_gspread_client()
+        if client:
+            sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+            sh = client.open_by_url(sheet_url)
+            ws = sh.worksheet(worksheet_name)
+            data = ws.get_all_records()
+            return pd.DataFrame(data), ws
+        return pd.DataFrame(), None
+    except Exception:
+        # 탭이 없거나 데이터가 비어있을 경우 빈 프레임 반환
+        return pd.DataFrame(), None
+
+# 데이터 로드
+df, ws_records = load_data("Records")
+cycle_df, ws_cycles = load_data("차수정보")
 
 st.title("오늘 하루 기록")
 tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "요약보기"])
@@ -67,10 +78,12 @@ with tab1:
     
     # 마지막 몸무게 자동 로드
     last_w = 55.0
-    if df is not None and not df.empty:
+    if not df.empty and "몸무게" in df.columns:
         try:
-            v_w = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
-            if not v_w.empty: last_w = float(v_w.iloc[-1])
+            # 유효한 마지막 몸무게 추출
+            valid_weights = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
+            if not valid_weights.empty:
+                last_w = float(valid_weights.iloc[-1])
         except: pass
 
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
@@ -78,55 +91,51 @@ with tab1:
     notes = st.text_area("메모", placeholder="특이사항을 적어주세요.")
 
     if st.button("기록 저장하기", use_container_width=True):
-        new_data = pd.DataFrame([{
-            "날짜": datetime.now().strftime('%Y-%m-%d'), 
-            "아침기록": morning, "저녁기록": evening, 
-            "몸무게": weight, "통증": pain, "메모": notes
-        }])
-        updated_df = pd.concat([df, new_data], ignore_index=True) if df is not None else new_data
-        # worksheet 명시 필수
-        conn.update(worksheet="Records", data=updated_df)
-        st.success("오늘의 기록이 저장되었습니다!")
-        st.rerun()
+        if ws_records:
+            new_row = [datetime.now().strftime('%Y-%m-%d'), morning, evening, weight, pain, notes]
+            ws_records.append_row(new_row)
+            st.success("오늘의 기록이 저장되었습니다!")
+            st.rerun()
+        else:
+            st.error("기록 시트(Records)를 찾을 수 없습니다.")
 
-# --- [TAB 2] 항암 차수 설정 ---
+# --- [TAB 2] 항암 차수 ---
 with tab2:
     st.subheader("새로운 항암 차수 등록")
     with st.form("cycle_form"):
         new_cycle = st.number_input("진행할 차수 (숫자만)", min_value=1, step=1)
         start_date = st.date_input("차수 시작 날짜")
         if st.form_submit_button("차수 시작 기록하기"):
-            new_cycle_data = pd.DataFrame([{"차수": int(new_cycle), "시작일": start_date.strftime('%Y-%m-%d')}])
-            updated_c_df = pd.concat([cycle_df, new_cycle_data], ignore_index=True) if cycle_df is not None else new_cycle_data
-            conn.update(worksheet="차수정보", data=updated_c_df)
-            st.success(f"{new_cycle}차 항암이 등록되었습니다!")
-            st.rerun()
+            if ws_cycles:
+                ws_cycles.append_row([int(new_cycle), start_date.strftime('%Y-%m-%d')])
+                st.success(f"{new_cycle}차 항암이 등록되었습니다!")
+                st.rerun()
+            else:
+                st.error("차수정보 시트를 찾을 수 없습니다.")
 
 # --- [TAB 3] 요약보기 ---
 with tab3:
-    if df is not None and not df.empty:
-        # 날짜 정렬 및 처리
+    if not df.empty and "날짜" in df.columns:
         pdf = df.copy()
         pdf['날짜'] = pd.to_datetime(pdf['날짜'], errors='coerce')
         pdf = pdf.dropna(subset=['날짜']).sort_values('날짜', ascending=False)
         
-        # 차수 데이터 처리
-        cdf = cycle_df.copy() if cycle_df is not None and not cycle_df.empty else None
-        if cdf is not None:
+        cdf = cycle_df.copy() if not cycle_df.empty else None
+        if cdf is not None and "시작일" in cdf.columns:
             cdf['시작일'] = pd.to_datetime(cdf['시작일'], errors='coerce')
             cdf = cdf.dropna(subset=['시작일']).sort_values('시작일', ascending=False)
 
-        current_display_cycle = None
+        current_bar = None
         for i, row in pdf.iterrows():
-            applicable_cycle = "기록 외"
+            label = "기록 외"
             if cdf is not None:
                 match = cdf[cdf['시작일'] <= row['날짜']]
                 if not match.empty:
-                    applicable_cycle = f"항암 {int(match.iloc[0]['차수'])}차 진행 중"
+                    label = f"항암 {int(match.iloc[0]['차수'])}차 진행 중"
 
-            if applicable_cycle != current_display_cycle:
-                st.markdown(f'<div class="cycle-header">{applicable_cycle}</div>', unsafe_allow_html=True)
-                current_display_cycle = applicable_cycle
+            if label != current_bar:
+                st.markdown(f'<div class="cycle-header">{label}</div>', unsafe_allow_html=True)
+                current_bar = label
 
             st.markdown(f"""
             <div class="record-card">
@@ -136,8 +145,8 @@ with tab3:
                 </div>
                 <div style="font-size:17px; margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
                 <div style="font-size:15px; opacity:0.8; margin-top:5px;">통증: {row['통증']} / 10</div>
-                <div style="margin-top:10px; font-size:16px;">{row['메모'] if str(row['메모']) != 'nan' and row['메모'] != '' else ''}</div>
+                <div style="margin-top:10px; font-size:16px;">{row['메모'] if str(row['메모']) != '' and str(row['메모']) != 'nan' else ''}</div>
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("아직 기록이 없습니다.")
+        st.info("데이터를 불러오는 중이거나 기록이 없습니다. Records 탭에 데이터가 있는지 확인해 주세요.")
