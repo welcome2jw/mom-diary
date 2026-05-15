@@ -7,7 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [강력 저장된 UI 스타일 - 가독성 및 모바일 최적화] ---
+# --- [강력 저장된 UI 스타일 - X버튼 위치 및 디자인 수정] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -18,27 +18,30 @@ st.markdown("""
         font-weight: bold; margin: 25px 0 15px 0; font-size: 16px; text-align: center;
     }
     
-    .status-card {
-        background-color: #f8f9fa; border-radius: 12px; padding: 15px; text-align: center;
-        border: 2px solid #007BFF; margin-bottom: 20px;
-    }
-
     .record-card {
         border-radius: 15px; padding: 18px; margin-bottom: 10px; 
         border: 1px solid rgba(128, 128, 128, 0.2); 
         box-shadow: 0px 4px 10px rgba(0,0,0,0.03);
         background-color: white;
+        position: relative; /* 버튼 위치 고정을 위해 추가 */
     }
 
     .weight-box { font-size: 22px; font-weight: 800; color: #007BFF !important; }
     
-    /* 텍스트 가독성 조절 */
     .info-line { font-size: 16px; margin-top: 8px; line-height: 1.5; }
-    .pain-line { font-size: 16px; font-weight: bold; color: #333; margin-top: 4px; }
+    .pain-line { font-size: 16px; font-weight: normal; color: #333; margin-top: 4px; } /* 볼드 해제 */
     .memo-line { margin-top: 10px; font-size: 15px; color: #555; border-top: 1px solid #eee; padding-top: 8px; }
 
-    /* 삭제 버튼 위치 조정 */
-    div[data-testid="column"] { display: flex; align-items: center; justify-content: center; }
+    /* X 버튼 스타일 최적화 (카드 내부 우측 상단 배치 느낌) */
+    .stButton > button.del-btn {
+        background-color: transparent !important;
+        border: none !important;
+        color: #ff4b4b !important;
+        font-size: 18px !important;
+        padding: 0 !important;
+        height: auto !important;
+        width: auto !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -134,11 +137,22 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">{label}</div>', unsafe_allow_html=True)
                 current_bar = label
 
-            col1, col2 = st.columns([0.88, 0.12])
-            with col1:
+            # 모바일 대응: X 버튼을 상단 날짜 줄 옆으로 완전히 붙임
+            col_main, col_del = st.columns([0.88, 0.12])
+            
+            with col_del:
+                # ❌ 버튼을 작고 투명한 빨간색으로 배치
+                if st.button("✖", key=f"del_{row['idx']}", help="기록 삭제"):
+                    ws_records.delete_rows(int(row['idx']))
+                    st.rerun()
+
+            with col_main:
+                # 통증 데이터 에러 방지 처리
                 pain_raw = str(row['통증']).strip()
-                # 통증 라인 구성 (0 포함)
-                pain_html = f'<div class="pain-line">통증: {pain_raw}/10</div>' if pain_raw != "" and pain_raw != "nan" else ""
+                if pain_raw == "" or pain_raw == "nan":
+                    pain_text = "통증: "
+                else:
+                    pain_text = f"통증: {pain_raw}/10"
                 
                 st.markdown(f"""
                 <div class="record-card">
@@ -147,13 +161,9 @@ with tab3:
                         <span class="weight-box">{row['몸무게']} <small style="font-size:14px;">kg</small></span>
                     </div>
                     <div class="info-line">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
-                    {pain_html}
+                    <div class="pain-line">{pain_text}</div>
                     <div class="memo-line">{row['메모'] if str(row['메모']) not in ['nan', ''] else ''}</div>
                 </div>
                 """, unsafe_allow_html=True)
-            with col2:
-                if st.button("❌", key=f"del_{row['idx']}"):
-                    ws_records.delete_rows(int(row['idx']))
-                    st.rerun()
     else:
         st.info("기록이 없습니다.")
