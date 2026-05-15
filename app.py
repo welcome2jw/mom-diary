@@ -3,114 +3,97 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 ---
+# --- UI 스타일 ---
 st.markdown("""
     <style>
-    :root { --primary-color: #007BFF !important; }
-    h1 { font-size: 38px !important; font-weight: 800 !important; text-align: center; }
-    .cycle-header { background-color: #007BFF; color: white; padding: 10px; border-radius: 10px; text-align: center; margin: 20px 0; }
-    .record-card { border-radius: 15px; padding: 22px; margin-bottom: 15px; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-    .weight-box { font-size: 24px; font-weight: 800; color: #007BFF; }
+    :root { --primary-color: #007BFF; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 5px; }
+    .record-card { border-radius: 12px; padding: 20px; margin-bottom: 15px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
-# 연결 이름을 "gsheets_v2"로 변경하여 캐시를 강제로 초기화합니다.
-conn = st.connection("gsheets_v2", type=GSheetsConnection)
+# 연결 식별자를 완전히 새롭게(v3) 변경하여 캐시 잔상을 지웁니다.
+conn = st.connection("gsheets_v3", type=GSheetsConnection)
 
-def load_all_data():
+def load_data_securely():
     try:
-        # 캐시 보존 시간을 0으로 설정하여 매번 새로 읽어옵니다.
-        records = conn.read(worksheet="Records", ttl=0)
-        cycles = conn.read(worksheet="Cycles", ttl=0)
-        return records, cycles
-    except Exception as e:
-        return None, None
+        # 방법 1: 이름으로 시도
+        df = conn.read(worksheet="Records", ttl=0)
+        c_df = conn.read(worksheet="Cycles", ttl=0)
+        return df, c_df
+    except:
+        try:
+            # 방법 2: 이름으로 실패 시, 시트의 첫 번째/두 번째 탭을 순서대로 강제 로드
+            df = conn.read(ttl=0) # 첫 번째 탭
+            return df, None
+        except Exception as e:
+            st.error(f"데이터 연결 실패: {e}")
+            return None, None
 
-df, c_df = load_all_data()
+df, c_df = load_data_securely()
 
 st.title("오늘 하루 기록")
+tab1, tab2, tab3 = st.tabs(["📝 기록하기", "💉 항암 차수", "📊 요약보기"])
 
-tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "요약보기"])
-
-# --- [TAB 1] 기록하기 ---
+# --- 기록하기 ---
 with tab1:
     st.subheader("오늘의 상태 기록")
     curr_date = datetime.now().strftime("%Y-%m-%d")
     
-    morning = st.radio("아침 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
-    evening = st.radio("저녁 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
+    m_val = st.radio("아침 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
+    e_val = st.radio("저녁 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
     
+    # 몸무게 초기값 설정
     last_w = 55.0
     if df is not None and not df.empty and "몸무게" in df.columns:
         try:
-            v_w = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
-            if not v_w.empty: last_w = float(v_w.iloc[-1])
+            last_w = float(pd.to_numeric(df['몸무게'], errors='coerce').dropna().iloc[-1])
         except: pass
 
-    weight = st.number_input("몸무게 (kg)", value=last_w, step=0.1)
-    pain = st.select_slider("통증", options=list(range(1, 11)), value=1)
-    notes = st.text_area("메모")
+    w_val = st.number_input("몸무게 (kg)", value=last_w, step=0.1)
+    p_val = st.select_slider("통증", options=list(range(1, 11)), value=1)
+    n_val = st.text_area("메모", value="")
 
     if st.button("저장하기", use_container_width=True):
-        new_data = pd.DataFrame([{
-            "날짜": curr_date, "아침기록": morning, "저녁기록": evening,
-            "몸무게": weight, "통증": pain, "메모": notes
+        new_row = pd.DataFrame([{
+            "날짜": curr_date, "아침기록": m_val, "저녁기록": e_val,
+            "몸무게": w_val, "통증": p_val, "메모": n_val
         }])
-        # 데이터가 없을 경우를 대비해 처리
-        full_df = pd.concat([df, new_data], ignore_index=True) if df is not None else new_data
-        conn.update(worksheet="Records", data=full_df)
-        st.success("저장 완료!")
+        final_df = pd.concat([df, new_row], ignore_index=True) if df is not None else new_row
+        # 업데이트 시에도 탭 이름을 명시하거나, 안 되면 첫 탭에 덮어씀
+        try:
+            conn.update(worksheet="Records", data=final_df)
+        except:
+            conn.update(data=final_df)
+        st.success("데이터가 시트에 저장되었습니다!")
         st.rerun()
 
-# --- [TAB 2] 항암 차수 ---
-with tab2:
-    st.subheader("차수 정보 입력")
-    with st.form("cycle_f"):
-        c_n = st.number_input("차수", min_value=1)
-        c_d = st.date_input("시작일")
-        if st.form_submit_button("저장"):
-            new_c = pd.DataFrame([{"차수": int(c_n), "시작일": c_d.strftime('%Y-%m-%d')}])
-            full_c = pd.concat([c_df, new_c], ignore_index=True) if c_df is not None else new_c
-            conn.update(worksheet="Cycles", data=full_c)
-            st.success("등록 완료!")
-            st.rerun()
-
-# --- [TAB 3] 요약보기 ---
+# --- 요약보기 ---
 with tab3:
-    if df is not None and not df.empty and "날짜" in df.columns:
-        df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
-        display_df = df.dropna(subset=['날짜']).sort_values('날짜', ascending=False)
-
-        current_bar = None
-        for i, row in display_df.iterrows():
-            # 차수 매칭 로직
-            label = "일반 기록"
-            if c_df is not None and not c_df.empty:
-                c_df['시작일'] = pd.to_datetime(c_df['시작일'], errors='coerce')
-                match = c_df[c_df['시작일'] <= row['날짜']].sort_values('시작일', ascending=False)
-                if not match.empty:
-                    label = f"항암 {int(match.iloc[0]['차수'])}차 진행"
-
-            if label != current_bar:
-                st.markdown(f'<div class="cycle-header">{label}</div>', unsafe_allow_html=True)
-                current_bar = label
-
-            st.markdown(f"""
-            <div class="record-card">
-                <div style="display: flex; justify-content: space-between;">
-                    <b>{row['날짜'].strftime('%m월 %d일')}</b>
-                    <span class="weight-box">{row['몸무게']}kg</span>
+    if df is not None and not df.empty:
+        # 컬럼 이름이 맞는지 확인 후 처리
+        if "날짜" in df.columns:
+            df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
+            display_df = df.dropna(subset=['날짜']).sort_values('날짜', ascending=False)
+            
+            for _, row in display_df.iterrows():
+                st.markdown(f"""
+                <div class="record-card">
+                    <div style="display:flex; justify-content:space-between;">
+                        <b>{row['날짜'].strftime('%m월 %d일')}</b>
+                        <span style="color:#007BFF; font-weight:bold;">{row['몸무게']}kg</span>
+                    </div>
+                    <div style="font-size:14px; color:#555; margin-top:8px;">
+                        아침: {row['아침기록']} | 저녁: {row['저녁기록']} | 통증: {row['통증']}
+                    </div>
+                    <div style="margin-top:8px; font-size:15px;">{row['메모'] if str(row['메모']) != 'nan' else ''}</div>
                 </div>
-                <div style="margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
-                <div style="font-size:14px; color:gray;">통증: {row['통증']} / 10</div>
-                <div style="margin-top:10px;">{row['메모'] if str(row['메모']) != 'nan' else ''}</div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+        else:
+            st.warning("시트의 헤더(1행)가 '날짜, 아침기록, 저녁기록...' 순서인지 확인해 주세요.")
+            st.write("현재 시트 컬럼:", df.columns.tolist())
     else:
-        st.info("시트에 데이터가 없거나 불러오는 중입니다. 잠시만 기다려주세요.")
-        # 정말로 안나오면 에러 내용 출력
-        if df is None:
-            st.error("연결 에러: 시트의 'Records' 탭을 찾을 수 없습니다.")
+        st.info("데이터를 불러오는 중입니다. 시트에 데이터가 한 줄 이상 있는지 확인해 주세요.")
