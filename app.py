@@ -6,7 +6,7 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [UI 스타일: 최초 주신 버전으로 완벽 복구] ---
+# --- [UI 스타일: 삭제 버튼 포함 최초 디자인으로 복구] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -32,6 +32,12 @@ st.markdown("""
         background-color: white;
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
+    
+    /* 삭제 버튼 디자인 복구: 빨간색 X 텍스트 스타일 */
+    .del-btn {
+        color: #ff4b4b !important; background: none !important; border: none !important;
+        font-size: 20px !important; cursor: pointer; padding: 0 !important; font-weight: bold !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -39,28 +45,25 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     try:
-        main_df = conn.read(ttl=0) 
+        m_df = conn.read(ttl=0) 
         try:
             c_df = conn.read(worksheet="차수정보", ttl=0)
         except:
             c_df = pd.DataFrame(columns=["차수", "시작일", "종료일"])
         
-        # [데이터 클리닝] nan 문자열을 공백으로 완전히 치환
-        def clean_val(x):
-            s = str(x).lower().strip()
-            if s in ['nan', 'none', 'nan.0', 'nat', '']: return ""
-            return str(x).replace('.0', '') if s.endswith('.0') else str(x)
+        # [데이터 클리닝] nan, None, NaT를 실제 빈 문자열로 강제 변환
+        m_df = m_df.fillna("").astype(str)
+        for col in m_df.columns:
+            m_df[col] = m_df[col].replace(['nan', 'None', 'nan.0', 'NaT', 'NaN'], '')
+        
+        if not m_df.empty:
+            m_df['날짜_dt'] = pd.to_datetime(m_df['날짜'], errors='coerce')
 
-        if not main_df.empty:
-            for col in main_df.columns:
-                main_df[col] = main_df[col].apply(clean_val)
-            main_df['날짜_dt'] = pd.to_datetime(main_df['날짜'], errors='coerce')
+        c_df = c_df.fillna("").astype(str)
+        for col in c_df.columns:
+            c_df[col] = c_df[col].replace(['nan', 'None', 'nan.0', 'NaN'], '')
             
-        if not c_df.empty:
-            for col in c_df.columns:
-                c_df[col] = c_df[col].apply(clean_val)
-            
-        return main_df, c_df
+        return m_df, c_df
     except:
         return pd.DataFrame(), pd.DataFrame(columns=["차수", "시작일", "종료일"])
 
@@ -80,17 +83,26 @@ with tab1:
     
     last_w = 55.0
     if not df.empty:
-        valid_ws = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
-        if not valid_ws.empty: last_w = float(valid_ws.iloc[-1])
+        try:
+            weights = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
+            if not weights.empty: last_w = float(weights.iloc[-1])
+        except: pass
     
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
     pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
-    notes = st.text_area("메모")
+    # [수정] 메모 안내 문구(Placeholder) 추가
+    notes = st.text_area("메모", placeholder="여기에 오늘의 특이사항을 기록해 주세요.")
 
     if st.button("기록 저장하기", use_container_width=True):
-        new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
-        updated_df = pd.concat([df.drop(columns=['날짜_dt'], errors='ignore'), new_row], ignore_index=True)
+        new_row = pd.DataFrame([{
+            "날짜": datetime.now().strftime('%Y-%m-%d'), 
+            "아침기록": morning, "저녁기록": evening, 
+            "몸무게": weight, "통증": int(pain), "메모": notes
+        }])
+        save_df = df.drop(columns=['날짜_dt'], errors='ignore')
+        updated_df = pd.concat([save_df, new_row], ignore_index=True)
         conn.update(data=updated_df)
+        st.success("저장 완료!")
         st.rerun()
 
 # --- [TAB 2] 항암 차수 관리 ---
@@ -120,11 +132,12 @@ with tab2:
 # --- [TAB 3] 기록보기 ---
 with tab3:
     if not df.empty:
-        # 진행 중 알림
+        # 1. 진행 중 알림
         ongoing = cycle_df[cycle_df['종료일'] == '']
         if not ongoing.empty:
             st.markdown(f'<div class="status-card" style="background-color:#eef7ff;"><h3 style="color:#007BFF; margin:0;">항암 {ongoing.iloc[-1]["차수"]}차 진행 중</h3></div>', unsafe_allow_html=True)
 
+        # 2. 모든 이벤트 통합
         events = []
         for i, row in df.iterrows():
             if pd.notnull(row['날짜_dt']):
@@ -136,8 +149,7 @@ with tab3:
             if pd.notnull(s_dt): events.append({'type': 's_bar', 'date': s_dt, 'num': c['차수'], 'd_str': c['시작일']})
             if pd.notnull(e_dt): events.append({'type': 'e_bar', 'date': e_dt, 'num': c['차수'], 'd_str': c['종료일']})
         
-        # [정렬 로직 수정]
-        # 종료 바(e_bar): 0 (가장 위) / 기록 카드: 1 / 시작 바(s_bar): 2 (가장 아래)
+        # 3. [정렬 로직 고정] 종료(0:위) -> 기록(1:중간) -> 시작(2:아래)
         def s_prio(x):
             prio = {'e_bar': 0, 'record': 1, 's_bar': 2}
             return (x['date'], prio[x['type']])
@@ -152,23 +164,25 @@ with tab3:
             elif event['type'] == 'record':
                 row, i = event['val'], event['id']
                 
-                # 삭제 버튼 (X 이모지 버튼)
                 col_card, col_del = st.columns([0.9, 0.1])
                 with col_del:
+                    # [수정] 삭제 버튼 디자인 복구
                     if st.button("❌", key=f"del_{i}"):
                         conn.update(data=df.drop(i).drop(columns=['날짜_dt'], errors='ignore'))
                         st.rerun()
                 
                 with col_card:
-                    # 데이터 정제 출력
-                    w_v = str(row['몸무게']).strip()
+                    # [수정] 데이터 정제 출력 (.0 제거 및 nan 공백화)
+                    w_v = str(row['몸무게']).replace('.0', '').strip()
                     m_v = str(row['아침기록']).strip()
                     e_v = str(row['저녁기록']).strip()
-                    p_v = str(row['통증']).strip()
+                    p_v = str(row['통증']).replace('.0', '').strip()
                     memo = str(row['메모']).strip()
                     
                     # 통증 0이거나 비었을 때 처리
                     pain_html = f'<div style="font-size:16px; margin-top:5px;">통증: {p_v}/10</div>' if p_v and p_v != '0' else ""
+                    
+                    # [에러 해결] 메모 섹션 HTML을 f-string 밖에서 미리 정의하거나 중괄호를 이중으로 사용하여 에러 방지
                     memo_html = f'<div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">{memo}</div>' if memo else ""
                     
                     st.markdown(f"""
@@ -182,3 +196,5 @@ with tab3:
                         {memo_html}
                     </div>
                     """, unsafe_allow_html=True)
+    else:
+        st.info("기록이 없습니다.")
