@@ -6,38 +6,35 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [강력 저장된 UI 스타일 - 사용자 제공 UI 고정] ---
+# --- [강력 저장된 UI 스타일] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
     h1 { font-size: 40px !important; font-weight: 800 !important; text-align: center; margin-bottom: 30px !important; }
     
     .cycle-header {
-        background-color: #007BFF;
-        color: white;
-        padding: 8px 15px;
-        border-radius: 10px;
-        font-weight: bold;
-        margin: 25px 0 15px 0;
-        font-size: 18px;
-        text-align: center;
+        background-color: #007BFF; color: white; padding: 8px 15px; border-radius: 10px;
+        font-weight: bold; margin: 25px 0 15px 0; font-size: 18px; text-align: center;
         box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.2);
     }
 
     div.stButton > button { background-color: #007BFF !important; color: white !important; border-radius: 8px !important; font-weight: bold !important; height: 3.5em !important; }
-    div[data-baseweb="tab-highlight-spinner"] { background-color: #007BFF !important; }
-    div[data-baseweb="tab"] div[aria-selected="true"] p { color: #007BFF !important; }
     
-    /* 기록 카드 스타일 */
+    /* 현재 진행 상태 카드 */
+    .status-card {
+        background-color: #f8f9fa; border-radius: 12px; padding: 20px; text-align: center;
+        border: 2px solid #007BFF; margin-bottom: 25px;
+    }
+
     .record-card { 
         border-radius: 15px; padding: 22px; margin-bottom: 20px; 
         border: 1px solid rgba(128, 128, 128, 0.2); 
         box-shadow: 0px 4px 12px rgba(0,0,0,0.05); 
-        position: relative;
+        background-color: white;
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
-    /* 삭제 버튼 전용 (투명 배경) */
+    /* 삭제 버튼 스타일 */
     button[key^="del_"] {
         background-color: transparent !important; color: #ff4b4b !important;
         border: none !important; font-size: 18px !important; padding: 0 !important;
@@ -48,25 +45,27 @@ st.markdown("""
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 데이터 로드
-def load_and_fix_data():
+def load_data():
     try:
         main_df = conn.read(ttl=0) 
         try:
             c_df = conn.read(worksheet="차수정보", ttl=0)
         except:
-            c_df = pd.DataFrame(columns=["차수", "시작일"])
+            c_df = pd.DataFrame(columns=["차수", "시작일", "종료일"])
         
+        # 날짜 전처리
         if not main_df.empty and "날짜" in main_df.columns:
             main_df['날짜'] = pd.to_datetime(main_df['날짜'], errors='coerce')
-        if not c_df.empty and "시작일" in c_df.columns:
-            c_df['시작일'] = pd.to_datetime(c_df['시작일'], errors='coerce')
+        if not c_df.empty:
+            for col in ['시작일', '종료일']:
+                if col in c_df.columns:
+                    c_df[col] = c_df[col].astype(str).replace(['nan', 'None', ''], '')
             
         return main_df, c_df
     except:
-        return pd.DataFrame(columns=["날짜", "아침기록", "저녁기록", "몸무게", "통증", "메모"]), pd.DataFrame(columns=["차수", "시작일"])
+        return pd.DataFrame(), pd.DataFrame(columns=["차수", "시작일", "종료일"])
 
-df, cycle_df = load_and_fix_data()
+df, cycle_df = load_data()
 
 st.title("오늘 하루 기록")
 tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "기록보기"])
@@ -74,12 +73,11 @@ tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "기록보기"])
 # --- [TAB 1] 기록하기 ---
 with tab1:
     st.subheader("오늘의 상태 기록")
-    curr_date_str = datetime.now().strftime("%Y년 %m월 %d일")
-    st.markdown(f'<p style="font-size:25px; font-weight:bold;">{curr_date_str}</p>', unsafe_allow_html=True)
+    curr_date = datetime.now().strftime("%Y년 %m월 %d일")
+    st.markdown(f'<p style="font-size:25px; font-weight:bold;">{curr_date}</p>', unsafe_allow_html=True)
     
-    options = ["약 복용", "주사 맞음", "복용 안함"]
-    morning = st.radio("아침 기록", options, horizontal=True)
-    evening = st.radio("저녁 기록", options, horizontal=True)
+    morning = st.radio("아침 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
+    evening = st.radio("저녁 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
     
     last_w = 55.0
     if not df.empty:
@@ -89,32 +87,47 @@ with tab1:
         except: pass
 
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
-    # 통증 0 선택 가능하도록 수정
-    pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
-    notes = st.text_area("메모", placeholder="특이사항을 적어주세요.")
+    pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0)
+    notes = st.text_area("메모")
 
     if st.button("기록 저장하기", use_container_width=True):
-        new_data = pd.DataFrame([{
-            "날짜": datetime.now().strftime('%Y-%m-%d'), 
-            "아침기록": morning, "저녁기록": evening, 
-            "몸무게": weight, "통증": int(pain), "메모": notes
-        }])
-        updated_df = pd.concat([df, new_data], ignore_index=True)
+        new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
+        updated_df = pd.concat([df, new_row], ignore_index=True)
         conn.update(data=updated_df)
-        st.success("오늘의 기록이 저장되었습니다!")
+        st.success("저장 완료!")
         st.rerun()
 
-# --- [TAB 2] 항암 차수 설정 ---
+# --- [TAB 2] 항암 차수 (시작일/종료일 UI) ---
 with tab2:
-    st.subheader("새로운 항암 차수 등록")
-    with st.form("cycle_form"):
-        new_cycle = st.number_input("진행할 차수 (숫자만)", min_value=1, step=1)
-        start_date = st.date_input("차수 시작 날짜", value=datetime.now())
-        if st.form_submit_button("차수 시작 기록하기"):
-            new_cycle_data = pd.DataFrame([{"차수": int(new_cycle), "시작일": start_date.strftime('%Y-%m-%d')}])
-            updated_cycle_df = pd.concat([cycle_df, new_cycle_data], ignore_index=True)
-            conn.update(worksheet="차수정보", data=updated_cycle_df)
+    st.subheader("항암 차수 관리")
+    
+    # 종료일이 없는(진행 중인) 차수 확인
+    ongoing = cycle_df[cycle_df['종료일'] == ''] if not cycle_df.empty else pd.DataFrame()
+    
+    if not ongoing.empty:
+        curr = ongoing.iloc[-1]
+        st.markdown(f"""
+        <div class="status-card">
+            <h3 style="color:#007BFF; margin:0;">현재 {curr['차수']}차 진행 중</h3>
+            <p style="margin:10px 0 0 0;">시작일: {curr['시작일']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button(f"{curr['차수']}차 종료하기", use_container_width=True):
+            idx = ongoing.index[-1]
+            cycle_df.at[idx, '종료일'] = datetime.now().strftime('%Y-%m-%d')
+            conn.update(worksheet="차수정보", data=cycle_df)
             st.rerun()
+    else:
+        st.info("현재 진행 중인 차수가 없습니다.")
+        with st.form("new_cycle"):
+            c_num = st.number_input("진행할 차수", min_value=1, step=1, value=len(cycle_df)+1)
+            s_date = st.date_input("시작 날짜")
+            if st.form_submit_button("새로운 차수 시작"):
+                new_c = pd.DataFrame([{"차수": int(c_num), "시작일": s_date.strftime('%Y-%m-%d'), "종료일": ""}])
+                updated_c = pd.concat([cycle_df, new_c], ignore_index=True)
+                conn.update(worksheet="차수정보", data=updated_c)
+                st.rerun()
 
 # --- [TAB 3] 기록보기 ---
 with tab3:
@@ -125,29 +138,32 @@ with tab3:
         for i, row in valid_df.iterrows():
             record_date = row['날짜']
             applicable_cycle = "기록 외"
+            
             if not cycle_df.empty:
-                temp_cycle = cycle_df.dropna(subset=['시작일']).sort_values('시작일', ascending=False)
-                match = temp_cycle[temp_cycle['시작일'] <= record_date]
-                if not match.empty:
-                    applicable_cycle = f"항암 {int(match.iloc[0]['차수'])}차 진행 중"
+                for _, c in cycle_df.iterrows():
+                    s_dt = pd.to_datetime(c['시작일'])
+                    e_dt = pd.to_datetime(c['종료일']) if c['종료일'] != '' else pd.to_datetime('2099-12-31')
+                    if s_dt <= record_date <= e_dt:
+                        applicable_cycle = f"항암 {int(c['차수'])}차 진행 중"
+                        break
 
             if applicable_cycle != current_display_cycle:
                 st.markdown(f'<div class="cycle-header">{applicable_cycle}</div>', unsafe_allow_html=True)
                 current_display_cycle = applicable_cycle
 
-            # 레이아웃: 카드와 삭제 버튼 배치
             col_card, col_del = st.columns([0.88, 0.12])
-            
             with col_del:
                 if st.button("✖", key=f"del_{i}"):
-                    updated_df = df.drop(i)
-                    conn.update(data=updated_df)
+                    conn.update(data=df.drop(i))
                     st.rerun()
 
             with col_card:
-                # 통증 표시 (0일 때도 표시, 에러 방지)
+                # nan 및 빈 태그 방지 로직
                 p_val = str(row['통증']).strip()
-                pain_text = f"통증: {p_val}/10" if p_val not in ["", "nan"] else "통증: "
+                pain_text = f"통증: {p_val}/10" if p_val not in ["nan", "", "None"] else "통증: "
+                
+                memo_raw = str(row['메모']).strip()
+                memo_html = f'<div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">{memo_raw}</div>' if memo_raw not in ["nan", "", "None"] else ""
                 
                 st.markdown(f"""
                 <div class="record-card">
@@ -156,11 +172,7 @@ with tab3:
                         <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small></span>
                     </div>
                     <div style="font-size:17px; margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
-                    <div style="font-size:16px; margin-top:5px; font-weight: normal;">{pain_text}</div>
-                    <div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">
-                        {row['메모'] if str(row['메모']) != 'nan' and row['메모'] != '' else ''}
-                    </div>
+                    <div style="font-size:16px; margin-top:5px;">{pain_text}</div>
+                    {memo_html}
                 </div>
                 """, unsafe_allow_html=True)
-    else:
-        st.info("기록이 없습니다.")
