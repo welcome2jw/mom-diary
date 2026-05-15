@@ -7,40 +7,63 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [강력 저장된 UI 스타일 - X버튼 위치 및 디자인 수정] ---
+# --- [강력 저장된 UI 스타일 - 블루 테마 및 레이아웃 완벽 고정] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
-    h1 { font-size: 32px !important; font-weight: 800 !important; text-align: center; margin-bottom: 20px !important; }
     
+    /* 제목 및 탭 스타일 */
+    h1 { font-size: 32px !important; font-weight: 800 !important; text-align: center; color: #333; margin-bottom: 20px !important; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { 
+        height: 50px; white-space: pre-wrap; background-color: #f0f2f6; 
+        border-radius: 10px 10px 0 0; padding: 10px 20px;
+    }
+    .stTabs [aria-selected="true"] { background-color: #007BFF !important; color: white !important; }
+
+    /* 모든 버튼을 블루 색상으로 고정 */
+    div.stButton > button { 
+        background-color: #007BFF !important; 
+        color: white !important; 
+        border-radius: 8px !important; 
+        font-weight: bold !important;
+        border: none !important;
+    }
+    
+    /* 차수 표시 헤더 */
     .cycle-header {
         background-color: #007BFF; color: white; padding: 8px 15px; border-radius: 10px;
         font-weight: bold; margin: 25px 0 15px 0; font-size: 16px; text-align: center;
+        box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.2);
     }
     
+    /* 현재 상태 카드 */
+    .status-card {
+        background-color: #f8f9fa; border-radius: 12px; padding: 15px; text-align: center;
+        border: 2px solid #007BFF; margin-bottom: 20px;
+    }
+
+    /* 기록 카드 스타일 */
     .record-card {
         border-radius: 15px; padding: 18px; margin-bottom: 10px; 
         border: 1px solid rgba(128, 128, 128, 0.2); 
         box-shadow: 0px 4px 10px rgba(0,0,0,0.03);
         background-color: white;
-        position: relative; /* 버튼 위치 고정을 위해 추가 */
     }
 
     .weight-box { font-size: 22px; font-weight: 800; color: #007BFF !important; }
-    
-    .info-line { font-size: 16px; margin-top: 8px; line-height: 1.5; }
-    .pain-line { font-size: 16px; font-weight: normal; color: #333; margin-top: 4px; } /* 볼드 해제 */
+    .info-line { font-size: 16px; margin-top: 8px; line-height: 1.5; color: #333; }
+    .pain-line { font-size: 16px; font-weight: normal; color: #333; margin-top: 4px; }
     .memo-line { margin-top: 10px; font-size: 15px; color: #555; border-top: 1px solid #eee; padding-top: 8px; }
 
-    /* X 버튼 스타일 최적화 (카드 내부 우측 상단 배치 느낌) */
-    .stButton > button.del-btn {
+    /* 삭제(X) 버튼 전용 스타일 */
+    button[key^="del_"] {
         background-color: transparent !important;
-        border: none !important;
         color: #ff4b4b !important;
-        font-size: 18px !important;
+        border: none !important;
+        font-size: 20px !important;
         padding: 0 !important;
-        height: auto !important;
-        width: auto !important;
+        margin-top: 5px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -137,22 +160,17 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">{label}</div>', unsafe_allow_html=True)
                 current_bar = label
 
-            # 모바일 대응: X 버튼을 상단 날짜 줄 옆으로 완전히 붙임
-            col_main, col_del = st.columns([0.88, 0.12])
-            
+            # 모바일 대응: 날짜줄 옆에 X 버튼 배치
+            col_card, col_del = st.columns([0.88, 0.12])
             with col_del:
-                # ❌ 버튼을 작고 투명한 빨간색으로 배치
-                if st.button("✖", key=f"del_{row['idx']}", help="기록 삭제"):
+                if st.button("✖", key=f"del_{row['idx']}"):
                     ws_records.delete_rows(int(row['idx']))
                     st.rerun()
 
-            with col_main:
-                # 통증 데이터 에러 방지 처리
+            with col_card:
+                # 통증 데이터 표시 (에러 방지: 비어있으면 '통증: '만 표시)
                 pain_raw = str(row['통증']).strip()
-                if pain_raw == "" or pain_raw == "nan":
-                    pain_text = "통증: "
-                else:
-                    pain_text = f"통증: {pain_raw}/10"
+                pain_text = f"통증: {pain_raw}/10" if pain_raw not in ["", "nan"] else "통증: "
                 
                 st.markdown(f"""
                 <div class="record-card">
