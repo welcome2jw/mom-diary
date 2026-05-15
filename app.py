@@ -6,7 +6,7 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [UI 스타일 고정] ---
+# --- [UI 스타일 고정: 삭제 버튼 및 레이아웃 수정] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -33,9 +33,10 @@ st.markdown("""
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
-    .del-btn-style {
-        background: none !important; border: none !important; color: #ff4b4b !important;
-        font-size: 22px !important; cursor: pointer; padding: 0 !important;
+    /* 삭제 버튼: 빨간 X 버튼이 잘 눌리도록 스타일 수정 */
+    .stButton > button[kind="secondary"] {
+        border: none !important; color: #ff4b4b !important; background: transparent !important;
+        font-size: 20px !important; padding: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -50,14 +51,16 @@ def load_data():
         except:
             c_df = pd.DataFrame(columns=["차수", "시작일", "종료일"])
         
+        # [데이터 클리닝] nan 문자열을 실제 공백으로 변환
         if not main_df.empty:
-            for col in main_df.columns:
-                main_df[col] = main_df[col].astype(str).replace(['nan', 'None', 'nan.0', 'NaN', 'NaT'], '')
+            main_df = main_df.astype(str).replace(['nan', 'None', 'nan.0', 'NaN', 'NaT'], '')
             main_df['날짜_dt'] = pd.to_datetime(main_df['날짜'], errors='coerce')
             
         if not c_df.empty:
-            for col in ['시작일', '종료일']:
-                c_df[col] = c_df[col].astype(str).replace(['nan', 'None', 'NaN', 'NaT'], '')
+            # 차수 정보 데이터 클리닝
+            c_df = c_df.astype(str).replace(['nan', 'None', 'NaN', 'NaT', 'nan.0'], '')
+            # 차수 번호가 비어있지 않은 것만 필터링
+            c_df = c_df[c_df['차수'] != '']
             
         return main_df, c_df
     except:
@@ -75,12 +78,12 @@ with tab1:
     st.markdown(f'<p style="font-size:25px; font-weight:bold;">{curr_date}</p>', unsafe_allow_html=True)
     morning = st.radio("아침 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
     evening = st.radio("저녁 기록", ["약 복용", "주사 맞음", "복용 안함"], horizontal=True)
+    
     last_w = 55.0
     if not df.empty:
-        try:
-            valid_weights = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
-            if not valid_weights.empty: last_w = float(valid_weights.iloc[-1])
-        except: pass
+        valid_ws = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
+        if not valid_ws.empty: last_w = float(valid_ws.iloc[-1])
+    
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
     pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
     notes = st.text_area("메모")
@@ -89,17 +92,19 @@ with tab1:
         new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
         updated_df = pd.concat([df.drop(columns=['날짜_dt'], errors='ignore'), new_row], ignore_index=True)
         conn.update(data=updated_df)
-        st.success("저장 완료!")
         st.rerun()
 
-# --- [TAB 2] 항암 차수 관리 ---
+# --- [TAB 2] 항암 차수 관리 (수정됨) ---
 with tab2:
     st.subheader("항암 차수 관리")
-    ongoing = cycle_df[cycle_df['종료일'] == ''] if not cycle_df.empty else pd.DataFrame()
+    # 종료일이 공백인 데이터가 있는지 확인
+    ongoing = cycle_df[cycle_df['종료일'].str.strip() == ''] if not cycle_df.empty else pd.DataFrame()
+    
     if not ongoing.empty:
         curr = ongoing.iloc[-1]
         st.markdown(f'<div class="status-card"><h3 style="color:#007BFF; margin:0;">현재 {curr["차수"]}차 진행 중</h3><p style="margin:10px 0 0 0;">시작일: {curr["시작일"]}</p></div>', unsafe_allow_html=True)
         if st.button(f"{curr['차수']}차 종료하기", use_container_width=True):
+            # cycle_df 전체에서 해당 인덱스 찾기
             idx = ongoing.index[-1]
             cycle_df.at[idx, '종료일'] = datetime.now().strftime('%Y-%m-%d')
             conn.update(worksheet="차수정보", data=cycle_df)
@@ -110,7 +115,7 @@ with tab2:
             c_num = st.number_input("진행할 차수", min_value=1, step=1, value=len(cycle_df)+1)
             s_date = st.date_input("시작 날짜")
             if st.form_submit_button("새로운 차수 시작"):
-                new_c = pd.DataFrame([{"차수": int(c_num), "시작일": s_date.strftime('%Y-%m-%d'), "종료일": ""}])
+                new_c = pd.DataFrame([{"차수": str(int(c_num)), "시작일": s_date.strftime('%Y-%m-%d'), "종료일": ""}])
                 updated_c = pd.concat([cycle_df, new_c], ignore_index=True)
                 conn.update(worksheet="차수정보", data=updated_c)
                 st.rerun()
@@ -118,13 +123,11 @@ with tab2:
 # --- [TAB 3] 기록보기 ---
 with tab3:
     if not df.empty:
-        # 현재 진행 중 차수 상단 고정
+        # 상단 현재 진행 알림
         ongoing = cycle_df[cycle_df['종료일'] == '']
         if not ongoing.empty:
-            curr = ongoing.iloc[-1]
-            st.markdown(f'<div class="status-card" style="background-color:#eef7ff; border-width:3px;"><h3 style="color:#007BFF; margin:0;">항암 {curr["차수"]}차 진행 중</h3></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="status-card" style="background-color:#eef7ff;"><h3 style="color:#007BFF; margin:0;">항암 {ongoing.iloc[-1]["차수"]}차 진행 중</h3></div>', unsafe_allow_html=True)
 
-        # 타임라인 통합 및 유효성 검사
         events = []
         for i, row in df.iterrows():
             if pd.notnull(row['날짜_dt']):
@@ -138,7 +141,8 @@ with tab3:
             if pd.notnull(e_dt):
                 events.append({'type': 'e_bar', 'date': e_dt, 'num': c['차수'], 'd_str': c['종료일']})
         
-        # 정렬 가중치 (종료바 -> 기록 -> 시작바)
+        # 정렬 로직: 요청하신 위치대로 가중치 수정
+        # 종료바(0: 가장 위) -> 기록카드(1: 중간) -> 시작바(2: 가장 아래)
         def s_prio(x):
             prio = {'e_bar': 0, 'record': 1, 's_bar': 2}
             return (x['date'], prio[x['type']])
@@ -149,7 +153,7 @@ with tab3:
             if event['type'] == 's_bar':
                 st.markdown(f'<div class="cycle-header">항암 {int(float(event["num"]))}차 시작 ({event["d_str"]})</div>', unsafe_allow_html=True)
             elif event['type'] == 'e_bar':
-                st.markdown(f'<div class="cycle-header">항암 {int(float(event["num"]))}차 종료 ({event["d_str"]})</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="cycle-header" style="background-color:#6c757d;">항암 {int(float(event["num"]))}차 종료 ({event["d_str"]})</div>', unsafe_allow_html=True)
             elif event['type'] == 'record':
                 row, i = event['val'], event['id']
                 col_card, col_del = st.columns([0.9, 0.1])
@@ -158,20 +162,22 @@ with tab3:
                         conn.update(data=df.drop(i).drop(columns=['날짜_dt'], errors='ignore'))
                         st.rerun()
                 with col_card:
-                    p_raw = str(row['통증']).replace('.0', '').strip()
-                    pain_text = f"통증: {p_raw}/10" if p_raw not in ["nan", ""] else "통증: "
-                    m_raw = str(row['메모']).strip()
-                    memo_html = f'<div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">{m_raw}</div>' if m_raw not in ["nan", ""] else ""
+                    # 무게/약기록 nan 방지 출력
+                    w_v = str(row['몸무게']).strip()
+                    m_v = str(row['아침기록']).strip()
+                    e_v = str(row['저녁기록']).strip()
+                    p_v = str(row['통증']).replace('.0', '').strip()
+                    memo = str(row['메모']).strip()
+                    memo_html = f'<div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">{memo}</div>' if memo else ""
+                    
                     st.markdown(f"""
                     <div class="record-card">
                         <div style="display: flex; justify-content: space-between; align-items: baseline;">
                             <span style="font-size:19px; font-weight:bold;">{event['date'].strftime('%m월 %d일')}</span>
-                            <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small></span>
+                            <span class="weight-box">{w_v} <small style="font-size:16px;">kg</small></span>
                         </div>
-                        <div style="font-size:17px; margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
-                        <div style="font-size:16px; margin-top:5px;">{pain_text}</div>
+                        <div style="font-size:17px; margin-top:10px;">아침: {m_v} | 저녁: {e_v}</div>
+                        <div style="font-size:16px; margin-top:5px;">통증: {p_v}/10</div>
                         {memo_html}
                     </div>
                     """, unsafe_allow_html=True)
-    else:
-        st.info("기록이 없습니다.")
