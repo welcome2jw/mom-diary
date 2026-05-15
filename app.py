@@ -6,7 +6,7 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [UI 스타일: 요청하신 원래 스타일로 고정] ---
+# --- [UI 스타일 고정: 요청하신 베이스 코드 그대로] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -33,7 +33,7 @@ st.markdown("""
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
-    /* 삭제 버튼: 텍스트 형태의 빨간 X */
+    /* 삭제 버튼 스타일 */
     .del-btn-style {
         background: none !important; border: none !important; color: #ff4b4b !important;
         font-size: 22px !important; cursor: pointer; padding: 0 !important;
@@ -51,7 +51,7 @@ def load_data():
         except:
             c_df = pd.DataFrame(columns=["차수", "시작일", "종료일"])
         
-        # [데이터 클리닝] nan 제거
+        # [데이터 클리닝] nan 방지 처리
         if not main_df.empty:
             for col in main_df.columns:
                 main_df[col] = main_df[col].astype(str).replace(['nan', 'None', 'nan.0', 'NaN'], '')
@@ -128,51 +128,55 @@ with tab2:
 # --- [TAB 3] 기록보기 ---
 with tab3:
     if not df.empty:
-        # 진행 중인 차수 맨 위에 표시
+        # 1. 상단 알림: 진행 중인 차수 고정
         ongoing = cycle_df[cycle_df['종료일'] == '']
         if not ongoing.empty:
             curr = ongoing.iloc[-1]
-            st.markdown(f'<div class="status-card" style="border-width:3px; background-color:#e7f3ff;"><h3 style="color:#007BFF; margin:0;">항암 {curr["차수"]}차 진행 중</h3></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="status-card" style="background-color: #eef7ff; border-width: 3px;">'
+                        f'<h3 style="color:#007BFF; margin:0;">항암 {curr["차수"]}차 진행 중</h3></div>', unsafe_allow_html=True)
 
-        # 모든 이벤트(기록카드, 시작바, 종료바)를 하나의 타임라인으로 합치기
-        events = []
+        # 2. 모든 이벤트(기록, 시작바, 종료바)를 하나의 리스트로 통합
+        timeline = []
         for i, row in df.iterrows():
-            events.append({'type': 'record', 'date': row['날짜_dt'], 'data': row, 'id': i})
+            timeline.append({'type': 'record', 'date': row['날짜_dt'], 'val': row, 'id': i})
         
         for _, c in cycle_df.iterrows():
             if c['시작일']:
-                events.append({'type': 'cycle_start', 'date': pd.to_datetime(c['시작일']), 'num': c['차수']})
+                timeline.append({'type': 'start_bar', 'date': pd.to_datetime(c['시작일']), 'num': c['차수']})
             if c['종료일']:
-                events.append({'type': 'cycle_end', 'date': pd.to_datetime(c['종료일']), 'num': c['차수']})
+                timeline.append({'type': 'end_bar', 'date': pd.to_datetime(c['종료일']), 'num': c['차수']})
         
-        # 날짜 내림차순 정렬 (최신이 위로)
-        # 같은 날짜면 종료바 -> 기록카드 -> 시작바 순서로 보이게 정렬 가중치 부여
-        def sort_priority(x):
-            prio = {'cycle_end': 0, 'record': 1, 'cycle_start': 2}
+        # 3. 날짜 역순 정렬 (최신이 위로)
+        # 같은 날짜일 경우: 종료바(0) -> 기록카드(1) -> 시작바(2) 순서로 보이게 가중치 부여
+        def sort_key(x):
+            prio = {'end_bar': 0, 'record': 1, 'start_bar': 2}
             return (x['date'], prio[x['type']])
-        
-        sorted_events = sorted(events, key=sort_priority, reverse=True)
+            
+        sorted_timeline = sorted(timeline, key=sort_key, reverse=True)
 
-        for event in sorted_events:
-            dt_str = event['date'].strftime('%Y-%m-%d')
+        # 4. 타임라인 출력
+        for item in sorted_timeline:
+            date_str = item['date'].strftime('%Y-%m-%d')
             
-            if event['type'] == 'cycle_start':
-                st.markdown(f'<div class="cycle-header">항암 {int(float(event["num"]))}차 시작 ({dt_str})</div>', unsafe_allow_html=True)
+            if item['type'] == 'start_bar':
+                st.markdown(f'<div class="cycle-header">항암 {int(float(item["num"]))}차 시작 ({date_str})</div>', unsafe_allow_html=True)
             
-            elif event['type'] == 'cycle_end':
-                st.markdown(f'<div class="cycle-header" style="background-color:#6c757d;">항암 {int(float(event["num"]))}차 종료 ({dt_str})</div>', unsafe_allow_html=True)
+            elif item['type'] == 'end_bar':
+                st.markdown(f'<div class="cycle-header" style="background-color: #6c757d;">항암 {int(float(item["num"]))}차 종료 ({date_str})</div>', unsafe_allow_html=True)
             
-            elif event['type'] == 'record':
-                row = event['data']
-                i = event['id']
+            elif item['type'] == 'record':
+                row = item['val']
+                i = item['id']
                 
                 col_card, col_del = st.columns([0.9, 0.1])
                 with col_del:
                     if st.button("❌", key=f"del_{i}"):
-                        conn.update(data=df.drop(i).drop(columns=['날짜_dt'], errors='ignore'))
+                        updated_df = df.drop(i).drop(columns=['날짜_dt'], errors='ignore')
+                        conn.update(data=updated_df)
                         st.rerun()
 
                 with col_card:
+                    # 데이터 정제
                     p_raw = str(row['통증']).replace('.0', '').strip()
                     pain_text = f"통증: {p_raw}/10" if p_raw not in ["nan", ""] else "통증: "
                     m_raw = str(row['메모']).strip()
@@ -181,7 +185,7 @@ with tab3:
                     st.markdown(f"""
                     <div class="record-card">
                         <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                            <span style="font-size:19px; font-weight:bold;">{event['date'].strftime('%m월 %d일')}</span>
+                            <span style="font-size:19px; font-weight:bold;">{item['date'].strftime('%m월 %d일')}</span>
                             <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small></span>
                         </div>
                         <div style="font-size:17px; margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
