@@ -6,7 +6,7 @@ from datetime import datetime
 # 1. 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# 2. CSS 스타일 (사용자님 최종 승인 UI + 버튼 완벽 분리)
+# 2. CSS 스타일
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -19,19 +19,16 @@ st.markdown("""
     }
     .cycle-header.end { background-color: #6c757d !important; }
 
-    /* [수정] 메인 버튼 (Primary) - 파란색 고정 */
     button[kind="primary"] { 
         background-color: #007BFF !important; color: white !important; 
         border-radius: 8px !important; font-weight: bold !important; height: 3.5em !important; 
     }
     
-    /* 상태 카드 */
     .status-card {
         background-color: #f8f9fa; border-radius: 12px; padding: 20px; text-align: center;
         border: 2px solid #007BFF; margin-bottom: 25px;
     }
 
-    /* 기록 카드 */
     .record-card { 
         border-radius: 15px; padding: 22px; margin-bottom: 20px; 
         border: 1px solid rgba(128, 128, 128, 0.2); 
@@ -40,7 +37,6 @@ st.markdown("""
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
-    /* [수정] 삭제 버튼 (Secondary) - 파란색/테두리/그림자 절대 금지 */
     button[kind="secondary"] {
         background-color: transparent !important;
         background: transparent !important;
@@ -69,12 +65,10 @@ def get_data():
     try:
         m_df = conn.read(ttl=0).fillna("")
         c_df = conn.read(worksheet="차수정보", ttl=0).fillna("")
-        
         for col in m_df.columns:
             m_df[col] = m_df[col].map(clean_val)
         for col in c_df.columns:
             c_df[col] = c_df[col].map(clean_val)
-            
         if not m_df.empty:
             m_df['dt'] = pd.to_datetime(m_df['날짜'], errors='coerce')
         return m_df, c_df
@@ -103,7 +97,6 @@ with tab1:
     pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
     notes = st.text_area("메모", placeholder="여기에 오늘의 특이사항을 기록해 주세요.")
 
-    # 저장 버튼은 파란색(Primary)으로 지정
     if st.button("기록 저장하기", type="primary", use_container_width=True):
         new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
         conn.update(data=pd.concat([df.drop(columns=['dt'], errors='ignore'), new_row], ignore_index=True))
@@ -113,11 +106,9 @@ with tab1:
 with tab2:
     st.subheader("항암 차수 관리")
     ongoing = c_df[c_df['종료일'] == ''] if not c_df.empty else pd.DataFrame()
-    
     if not ongoing.empty:
         curr = ongoing.iloc[-1]
         st.markdown(f'<div class="status-card"><h3 style="color:#007BFF; margin:0;">현재 {curr["차수"]}차 진행 중</h3><p style="margin:10px 0 0 0;">시작일: {curr["시작일"]}</p></div>', unsafe_allow_html=True)
-        # 종료 버튼도 파란색(Primary) 지정
         if st.button(f"{curr['차수']}차 종료하기", type="primary", use_container_width=True):
             idx = c_df[c_df['종료일'] == ''].index[-1]
             c_df.at[idx, '종료일'] = datetime.now().strftime('%Y-%m-%d')
@@ -143,14 +134,12 @@ with tab3:
         for i, r in df.iterrows():
             if pd.notnull(r['dt']): 
                 items.append({'d': r['dt'], 'p': 1, 'type': 'rec', 'v': r, 'id': i})
-                
         for _, c in c_df.iterrows():
             sd = pd.to_datetime(c['시작일'], errors='coerce')
             ed = pd.to_datetime(c['종료일'], errors='coerce')
             if pd.notnull(sd): items.append({'d': sd, 'p': 0, 'type': 'start', 'v': c['차수'], 'ds': c['시작일']})
             if pd.notnull(ed): items.append({'d': ed, 'p': 2, 'type': 'end', 'v': c['차수'], 'ds': c['종료일']})
         
-        # 정렬: 같은 날짜면 종료바(위), 기록(중간), 시작바(아래)
         items.sort(key=lambda x: (x['d'], x['p']), reverse=True)
 
         for item in items:
@@ -160,19 +149,22 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">항암 {item["v"]}차 시작 ({item["ds"]})</div>', unsafe_allow_html=True)
             elif item['type'] == 'rec':
                 v, rid = item['v'], item['id']
-                
-                col_card, col_del = st.columns([0.9, 0.1])
-                with col_del:
-                    # 삭제 버튼은 기본 설정인 Secondary로 지정되어 투명하게 적용됨
+                c1, c2 = st.columns([0.9, 0.1])
+                with c2:
                     if st.button("❌", key=f"del_{rid}"):
                         conn.update(data=df.drop(rid).drop(columns=['dt'], errors='ignore'))
                         st.rerun()
-                        
-                with col_card:
-                    p_txt = f"<div style='font-size:16px; margin-top:5px;'>통증: {v['통증']}/10</div>" if v['통증'] and v['통증'] != "0" else ""
+                with c1:
+                    # [수정] 통증 로직: 값이 아예 없으면 "기록안함", 0 포함 숫자가 있으면 숫자 표시
+                    p_val = v.get('통증', '').strip()
+                    if p_val == "":
+                        p_display = "통증: 기록안함"
+                    else:
+                        p_display = f"통증: {p_val}/10"
+                    
+                    p_txt = f"<div style='font-size:16px; margin-top:5px;'>{p_display}</div>"
                     m_txt = f"<div style='border-top:1px solid #eee; margin-top:10px; padding-top:8px; font-size:16px;'>{v['메모']}</div>" if v['메모'] else ""
                     
-                    # [핵심] 들여쓰기를 제거하여 코드로 인식되는 에러 원천 차단
                     html_content = f"""<div class="record-card">
 <div style="display: flex; justify-content: space-between; align-items: baseline;">
 <span style="font-size:19px; font-weight:bold;">{item['d'].strftime('%m월 %d일')}</span>
