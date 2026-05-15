@@ -6,7 +6,7 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [강력 저장된 UI 스타일] ---
+# --- [UI 스타일 고정] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -20,7 +20,6 @@ st.markdown("""
 
     div.stButton > button { background-color: #007BFF !important; color: white !important; border-radius: 8px !important; font-weight: bold !important; height: 3.5em !important; }
     
-    /* 현재 진행 상태 카드 */
     .status-card {
         background-color: #f8f9fa; border-radius: 12px; padding: 20px; text-align: center;
         border: 2px solid #007BFF; margin-bottom: 25px;
@@ -34,11 +33,10 @@ st.markdown("""
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
-    /* 삭제 버튼 스타일 */
-    button[key^="del_"] {
-        background-color: transparent !important; color: #ff4b4b !important;
-        border: none !important; font-size: 18px !important; padding: 0 !important;
-        height: auto !important;
+    /* 삭제 버튼 (빨간 X 이모지용 스타일) */
+    .del-btn-style {
+        background: none !important; border: none !important; color: #ff4b4b !important;
+        font-size: 22px !important; cursor: pointer; padding: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -53,13 +51,17 @@ def load_data():
         except:
             c_df = pd.DataFrame(columns=["차수", "시작일", "종료일"])
         
-        # 날짜 전처리
-        if not main_df.empty and "날짜" in main_df.columns:
-            main_df['날짜'] = pd.to_datetime(main_df['날짜'], errors='coerce')
+        # [데이터 클리닝] nan 방지 처리
+        if not main_df.empty:
+            # 모든 데이터를 문자열로 변환 후 nan 제거
+            for col in main_df.columns:
+                main_df[col] = main_df[col].astype(str).replace(['nan', 'None', 'nan.0', 'NaN'], '')
+            # 날짜만 다시 datetime으로 (비교용)
+            main_df['날짜_dt'] = pd.to_datetime(main_df['날짜'], errors='coerce')
+            
         if not c_df.empty:
             for col in ['시작일', '종료일']:
-                if col in c_df.columns:
-                    c_df[col] = c_df[col].astype(str).replace(['nan', 'None', ''], '')
+                c_df[col] = c_df[col].astype(str).replace(['nan', 'None', 'NaN'], '')
             
         return main_df, c_df
     except:
@@ -82,37 +84,35 @@ with tab1:
     last_w = 55.0
     if not df.empty:
         try:
-            v_w = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
-            if not v_w.empty: last_w = float(v_w.iloc[-1])
+            # 몸무게 nan 방지 로직
+            valid_weights = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
+            if not valid_weights.empty: last_w = float(valid_weights.iloc[-1])
         except: pass
 
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
-    pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0)
+    # 통증 정수(int)로 강제 변환
+    pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
     notes = st.text_area("메모")
 
     if st.button("기록 저장하기", use_container_width=True):
-        new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
-        updated_df = pd.concat([df, new_row], ignore_index=True)
+        new_row = pd.DataFrame([{
+            "날짜": datetime.now().strftime('%Y-%m-%d'), 
+            "아침기록": morning, "저녁기록": evening, 
+            "몸무게": weight, "통증": int(pain), "메모": notes
+        }])
+        updated_df = pd.concat([df.drop(columns=['날짜_dt'], errors='ignore'), new_row], ignore_index=True)
         conn.update(data=updated_df)
         st.success("저장 완료!")
         st.rerun()
 
-# --- [TAB 2] 항암 차수 (시작일/종료일 UI) ---
+# --- [TAB 2] 항암 차수 관리 ---
 with tab2:
     st.subheader("항암 차수 관리")
-    
-    # 종료일이 없는(진행 중인) 차수 확인
     ongoing = cycle_df[cycle_df['종료일'] == ''] if not cycle_df.empty else pd.DataFrame()
     
     if not ongoing.empty:
         curr = ongoing.iloc[-1]
-        st.markdown(f"""
-        <div class="status-card">
-            <h3 style="color:#007BFF; margin:0;">현재 {curr['차수']}차 진행 중</h3>
-            <p style="margin:10px 0 0 0;">시작일: {curr['시작일']}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
+        st.markdown(f'<div class="status-card"><h3 style="color:#007BFF; margin:0;">현재 {curr["차수"]}차 진행 중</h3><p style="margin:10px 0 0 0;">시작일: {curr["시작일"]}</p></div>', unsafe_allow_html=True)
         if st.button(f"{curr['차수']}차 종료하기", use_container_width=True):
             idx = ongoing.index[-1]
             cycle_df.at[idx, '종료일'] = datetime.now().strftime('%Y-%m-%d')
@@ -131,48 +131,60 @@ with tab2:
 
 # --- [TAB 3] 기록보기 ---
 with tab3:
-    valid_df = df.dropna(subset=['날짜']).sort_values('날짜', ascending=False) if not df.empty else pd.DataFrame()
-    
-    if not valid_df.empty:
+    if not df.empty:
+        valid_df = df.sort_values('날짜_dt', ascending=False)
         current_display_cycle = None
+        
         for i, row in valid_df.iterrows():
-            record_date = row['날짜']
+            record_dt = row['날짜_dt']
             applicable_cycle = "기록 외"
             
+            # 차수 판별 로직 수정 (종료일이 없으면 미래의 모든 날짜 포함)
             if not cycle_df.empty:
                 for _, c in cycle_df.iterrows():
                     s_dt = pd.to_datetime(c['시작일'])
-                    e_dt = pd.to_datetime(c['종료일']) if c['종료일'] != '' else pd.to_datetime('2099-12-31')
-                    if s_dt <= record_date <= e_dt:
-                        applicable_cycle = f"항암 {int(c['차수'])}차 진행 중"
+                    e_str = c['종료일']
+                    e_dt = pd.to_datetime(e_str) if e_str != '' else pd.to_datetime('2099-12-31')
+                    
+                    if s_dt <= record_dt <= e_dt:
+                        status = f" ({e_str} 종료)" if e_str != '' else " (진행 중)"
+                        applicable_cycle = f"항암 {int(c['차수'])}차{status}"
                         break
 
             if applicable_cycle != current_display_cycle:
                 st.markdown(f'<div class="cycle-header">{applicable_cycle}</div>', unsafe_allow_html=True)
                 current_display_cycle = applicable_cycle
 
-            col_card, col_del = st.columns([0.88, 0.12])
+            col_card, col_del = st.columns([0.9, 0.1])
             with col_del:
-                if st.button("✖", key=f"del_{i}"):
-                    conn.update(data=df.drop(i))
+                # 파란색 버튼 대신 빨간색 엑스 이모지 사용
+                if st.button("❌", key=f"del_{i}", help="삭제"):
+                    updated_df = df.drop(i).drop(columns=['날짜_dt'], errors='ignore')
+                    conn.update(data=updated_df)
                     st.rerun()
 
             with col_card:
-                # nan 및 빈 태그 방지 로직
-                p_val = str(row['통증']).strip()
-                pain_text = f"통증: {p_val}/10" if p_val not in ["nan", "", "None"] else "통증: "
+                # [nan 제거 및 정수화]
+                p_raw = str(row['통증']).replace('.0', '').strip()
+                pain_text = f"통증: {p_raw}/10" if p_raw not in ["nan", "NaN", ""] else "통증: "
                 
-                memo_raw = str(row['메모']).strip()
-                memo_html = f'<div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">{memo_raw}</div>' if memo_raw not in ["nan", "", "None"] else ""
+                m_raw = str(row['메모']).strip()
+                memo_html = f'<div style="margin-top:10px; font-size:16px; border-top: 1px solid #eee; padding-top:8px;">{m_raw}</div>' if m_raw not in ["nan", "NaN", ""] else ""
                 
+                w_val = str(row['몸무게']).replace('nan', '').strip()
+                morning_val = str(row['아침기록']).replace('nan', '').strip()
+                evening_val = str(row['저녁기록']).replace('nan', '').strip()
+
                 st.markdown(f"""
                 <div class="record-card">
                     <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                        <span style="font-size:19px; font-weight:bold;">{record_date.strftime('%m월 %d일')}</span>
-                        <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small></span>
+                        <span style="font-size:19px; font-weight:bold;">{record_dt.strftime('%m월 %d일')}</span>
+                        <span class="weight-box">{w_val} <small style="font-size:16px;">kg</small></span>
                     </div>
-                    <div style="font-size:17px; margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
+                    <div style="font-size:17px; margin-top:10px;">아침: {morning_val} | 저녁: {evening_val}</div>
                     <div style="font-size:16px; margin-top:5px;">{pain_text}</div>
                     {memo_html}
                 </div>
                 """, unsafe_allow_html=True)
+    else:
+        st.info("기록이 없습니다.")
