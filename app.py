@@ -32,34 +32,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# 시트 연결 (서비스 계정 인증 필수)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 1. 데이터 로드 및 날짜 포맷 안전 처리
-def load_and_fix_data():
+# 데이터 로드 함수 (에러 방지 강화)
+def load_data():
     try:
-        # worksheet 이름을 명시하지 않으면 첫 번째 탭을 읽습니다.
-        main_df = conn.read(ttl=0) 
-        # 차수 정보 시트 이름이 '차수정보'인지 확인 필요
-        try:
-            c_df = conn.read(worksheet="차수정보", ttl=0)
-        except:
-            c_df = pd.DataFrame(columns=["차수", "시작일"])
-        
-        # 날짜 포맷 강제 변환 (가장 중요한 부분)
-        if not main_df.empty and "날짜" in main_df.columns:
-            main_df['날짜'] = pd.to_datetime(main_df['날짜'], errors='coerce', infer_datetime_format=True)
-        
-        if not c_df.empty and "시작일" in c_df.columns:
-            c_df['시작일'] = pd.to_datetime(c_df['시작일'], errors='coerce', infer_datetime_format=True)
-            
-        return main_df, c_df
+        # worksheet 이름을 명시적으로 지정
+        main_df = conn.read(worksheet="Records", ttl=0)
     except:
-        return pd.DataFrame(columns=["날짜", "아침기록", "저녁기록", "몸무게", "통증", "메모"]), pd.DataFrame(columns=["차수", "시작일"])
+        main_df = pd.DataFrame(columns=["날짜", "아침기록", "저녁기록", "몸무게", "통증", "메모"])
+    
+    try:
+        c_df = conn.read(worksheet="차수정보", ttl=0)
+    except:
+        c_df = pd.DataFrame(columns=["차수", "시작일"])
+        
+    return main_df, c_df
 
-df, cycle_df = load_and_fix_data()
+df, cycle_df = load_data()
 
 st.title("오늘 하루 기록")
-
 tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "요약보기"])
 
 # --- [TAB 1] 기록하기 ---
@@ -74,7 +67,7 @@ with tab1:
     
     # 마지막 몸무게 자동 로드
     last_w = 55.0
-    if not df.empty:
+    if df is not None and not df.empty:
         try:
             v_w = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
             if not v_w.empty: last_w = float(v_w.iloc[-1])
@@ -90,8 +83,9 @@ with tab1:
             "아침기록": morning, "저녁기록": evening, 
             "몸무게": weight, "통증": pain, "메모": notes
         }])
-        updated_df = pd.concat([df, new_data], ignore_index=True)
-        conn.update(data=updated_df)
+        updated_df = pd.concat([df, new_data], ignore_index=True) if df is not None else new_data
+        # worksheet 명시 필수
+        conn.update(worksheet="Records", data=updated_df)
         st.success("오늘의 기록이 저장되었습니다!")
         st.rerun()
 
@@ -100,35 +94,33 @@ with tab2:
     st.subheader("새로운 항암 차수 등록")
     with st.form("cycle_form"):
         new_cycle = st.number_input("진행할 차수 (숫자만)", min_value=1, step=1)
-        start_date = st.date_input("차수 시작 날짜", value=datetime.now())
+        start_date = st.date_input("차수 시작 날짜")
         if st.form_submit_button("차수 시작 기록하기"):
             new_cycle_data = pd.DataFrame([{"차수": int(new_cycle), "시작일": start_date.strftime('%Y-%m-%d')}])
-            updated_cycle_df = pd.concat([cycle_df, new_cycle_data], ignore_index=True)
-            conn.update(worksheet="차수정보", data=updated_cycle_df)
+            updated_c_df = pd.concat([cycle_df, new_cycle_data], ignore_index=True) if cycle_df is not None else new_cycle_data
+            conn.update(worksheet="차수정보", data=updated_c_df)
             st.success(f"{new_cycle}차 항암이 등록되었습니다!")
             st.rerun()
 
-    if not cycle_df.empty:
-        st.divider()
-        st.write("진행 중인 차수 목록")
-        st.dataframe(cycle_df.sort_values("차수", ascending=False), hide_index=True)
-
 # --- [TAB 3] 요약보기 ---
 with tab3:
-    # 에러 방지를 위해 날짜가 유효한 데이터만 필터링
-    valid_df = df.dropna(subset=['날짜']).sort_values('날짜', ascending=False) if not df.empty else pd.DataFrame()
-    
-    if not valid_df.empty:
-        current_display_cycle = None
+    if df is not None and not df.empty:
+        # 날짜 정렬 및 처리
+        pdf = df.copy()
+        pdf['날짜'] = pd.to_datetime(pdf['날짜'], errors='coerce')
+        pdf = pdf.dropna(subset=['날짜']).sort_values('날짜', ascending=False)
         
-        for i, row in valid_df.iterrows():
-            record_date = row['날짜']
+        # 차수 데이터 처리
+        cdf = cycle_df.copy() if cycle_df is not None and not cycle_df.empty else None
+        if cdf is not None:
+            cdf['시작일'] = pd.to_datetime(cdf['시작일'], errors='coerce')
+            cdf = cdf.dropna(subset=['시작일']).sort_values('시작일', ascending=False)
+
+        current_display_cycle = None
+        for i, row in pdf.iterrows():
             applicable_cycle = "기록 외"
-            
-            if not cycle_df.empty:
-                # 시작일이 유효한지 확인 후 비교
-                temp_cycle = cycle_df.dropna(subset=['시작일']).sort_values('시작일', ascending=False)
-                match = temp_cycle[temp_cycle['시작일'] <= record_date]
+            if cdf is not None:
+                match = cdf[cdf['시작일'] <= row['날짜']]
                 if not match.empty:
                     applicable_cycle = f"항암 {int(match.iloc[0]['차수'])}차 진행 중"
 
@@ -136,11 +128,10 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">{applicable_cycle}</div>', unsafe_allow_html=True)
                 current_display_cycle = applicable_cycle
 
-            formatted_date = record_date.strftime('%m월 %d일')
             st.markdown(f"""
             <div class="record-card">
                 <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                    <span style="font-size:19px; font-weight:bold;">{formatted_date}</span>
+                    <span style="font-size:19px; font-weight:bold;">{row['날짜'].strftime('%m월 %d일')}</span>
                     <span class="weight-box">{row['몸무게']} <small style="font-size:16px;">kg</small></span>
                 </div>
                 <div style="font-size:17px; margin-top:10px;">아침: {row['아침기록']} | 저녁: {row['저녁기록']}</div>
@@ -149,4 +140,4 @@ with tab3:
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("아직 기록이 없거나 날짜 형식을 읽을 수 없습니다. 첫 번째 탭에서 기록을 저장해 보세요.")
+        st.info("아직 기록이 없습니다.")
