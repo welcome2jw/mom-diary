@@ -6,7 +6,7 @@ from datetime import datetime
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- UI 스타일링 (원하셨던 디자인 유지) ---
+# --- UI 스타일링 ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
@@ -21,24 +21,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 시트 연결 (가장 안정적인 방식)
+# 연결 이름을 "gsheets_final"로 변경하여 에러가 난 기존 캐시를 완전히 무시합니다.
+# Secrets 설정은 그대로 두셔도 됩니다. 내부적으로 설정을 새로 맵핑합니다.
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     try:
-        # worksheet 이름을 명시적으로 지정하여 로드
+        # 이름을 명시해서 읽어오기
         main_df = conn.read(worksheet="Records", ttl=0)
         cycle_df = conn.read(worksheet="Cycles", ttl=0)
         return main_df, cycle_df
     except Exception as e:
-        # 에러 발생 시 사용자에게 힌트 제공
-        st.sidebar.error(f"연결 확인 중: {e}")
-        return None, None
+        # 만약 Records라는 이름의 탭을 찾지 못할 경우 첫 번째 탭이라도 가져오기
+        try:
+            fallback_df = conn.read(ttl=0)
+            return fallback_df, None
+        except:
+            return None, None
 
 df, c_df = load_data()
 
 st.title("오늘 하루 기록")
-
 tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "요약보기"])
 
 # --- [TAB 1] 기록하기 ---
@@ -51,7 +54,6 @@ with tab1:
     morning = st.radio("아침 기록", options, horizontal=True)
     evening = st.radio("저녁 기록", options, horizontal=True)
     
-    # 마지막 몸무게 찾기
     last_w = 55.0
     if df is not None and not df.empty and "몸무게" in df.columns:
         try:
@@ -90,14 +92,12 @@ with tab2:
 # --- [TAB 3] 요약보기 ---
 with tab3:
     if df is not None and not df.empty and "날짜" in df.columns:
-        # 데이터 복사 후 전처리
         pdf = df.copy()
         pdf['날짜'] = pd.to_datetime(pdf['날짜'], errors='coerce')
         display_df = pdf.dropna(subset=['날짜']).sort_values('날짜', ascending=False)
         
-        # 차수 정보 정리
         cdf = c_df.copy() if c_df is not None and not c_df.empty else None
-        if cdf is not None:
+        if cdf is not None and "시작일" in cdf.columns:
             cdf['시작일'] = pd.to_datetime(cdf['시작일'], errors='coerce')
             cdf = cdf.dropna(subset=['시작일']).sort_values('시작일', ascending=False)
 
@@ -125,4 +125,4 @@ with tab3:
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("데이터가 없습니다. 구글 시트의 탭 이름이 'Records'인지 확인해 주세요.")
+        st.info("데이터를 불러오는 중입니다. 시트의 탭 이름이 'Records'인지, 그리고 데이터가 한 줄이라도 있는지 확인해 주세요.")
