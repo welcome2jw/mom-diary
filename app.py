@@ -7,68 +7,53 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
 
-# --- [강력 저장된 UI 스타일 - 블루 테마 및 레이아웃 완벽 고정] ---
+# --- [강력 고정: UI FINAL VER. 스타일 시트] ---
 st.markdown("""
     <style>
     :root { --primary-color: #007BFF !important; }
     
-    /* 제목 및 탭 스타일 */
+    /* 1. 기본 폰트 및 제목 */
     h1 { font-size: 32px !important; font-weight: 800 !important; text-align: center; color: #333; margin-bottom: 20px !important; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { 
-        height: 50px; white-space: pre-wrap; background-color: #f0f2f6; 
-        border-radius: 10px 10px 0 0; padding: 10px 20px;
-    }
-    .stTabs [aria-selected="true"] { background-color: #007BFF !important; color: white !important; }
-
-    /* 모든 버튼을 블루 색상으로 고정 */
-    div.stButton > button { 
-        background-color: #007BFF !important; 
-        color: white !important; 
-        border-radius: 8px !important; 
-        font-weight: bold !important;
-        border: none !important;
-    }
     
-    /* 차수 표시 헤더 */
+    /* 2. 탭 및 버튼 블루 테마 고정 */
+    .stTabs [aria-selected="true"] { background-color: #007BFF !important; color: white !important; }
+    div.stButton > button { 
+        background-color: #007BFF !important; color: white !important; 
+        border-radius: 8px !important; font-weight: bold !important; border: none !important;
+    }
+
+    /* 3. 항암 차수 헤더 & 상태 카드 */
     .cycle-header {
         background-color: #007BFF; color: white; padding: 8px 15px; border-radius: 10px;
         font-weight: bold; margin: 25px 0 15px 0; font-size: 16px; text-align: center;
         box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.2);
     }
-    
-    /* 현재 상태 카드 */
     .status-card {
         background-color: #f8f9fa; border-radius: 12px; padding: 15px; text-align: center;
         border: 2px solid #007BFF; margin-bottom: 20px;
     }
 
-    /* 기록 카드 스타일 */
+    /* 4. 기록 카드 레이아웃 (Final Ver.) */
     .record-card {
         border-radius: 15px; padding: 18px; margin-bottom: 10px; 
         border: 1px solid rgba(128, 128, 128, 0.2); 
         box-shadow: 0px 4px 10px rgba(0,0,0,0.03);
         background-color: white;
     }
-
     .weight-box { font-size: 22px; font-weight: 800; color: #007BFF !important; }
-    .info-line { font-size: 16px; margin-top: 8px; line-height: 1.5; color: #333; }
-    .pain-line { font-size: 16px; font-weight: normal; color: #333; margin-top: 4px; }
+    .info-line { font-size: 16px; margin-top: 8px; line-height: 1.5; color: #333; } /* 약 기록 */
+    .pain-line { font-size: 16px; font-weight: normal !important; color: #333; margin-top: 4px; } /* 통증 줄 (볼드해제) */
     .memo-line { margin-top: 10px; font-size: 15px; color: #555; border-top: 1px solid #eee; padding-top: 8px; }
 
-    /* 삭제(X) 버튼 전용 스타일 */
+    /* 5. 삭제 버튼 (X) 전용 스타일 */
     button[key^="del_"] {
-        background-color: transparent !important;
-        color: #ff4b4b !important;
-        border: none !important;
-        font-size: 20px !important;
-        padding: 0 !important;
-        margin-top: 5px !important;
+        background-color: transparent !important; color: #ff4b4b !important;
+        border: none !important; font-size: 20px !important; padding: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 구글 시트 연결 함수 ---
+# --- 구글 시트 연결 ---
 def get_gspread_client():
     try:
         creds_dict = dict(st.secrets["connections"]["gsheets"])
@@ -85,8 +70,7 @@ def load_data(worksheet_name):
         client = get_gspread_client()
         sh = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
         ws = sh.worksheet(worksheet_name)
-        data = ws.get_all_records()
-        return pd.DataFrame(data), ws
+        return pd.DataFrame(ws.get_all_records()), ws
     except:
         return pd.DataFrame(), None
 
@@ -138,7 +122,7 @@ with tab2:
                 ws_cycles.append_row([int(new_c), s_date.strftime('%Y-%m-%d'), ""])
                 st.rerun()
 
-# --- [TAB 3] 기록보기 ---
+# --- [TAB 3] 기록보기 (Final Ver. 레이아웃 고정) ---
 with tab3:
     if not df.empty:
         pdf = df.copy()
@@ -148,6 +132,7 @@ with tab3:
 
         current_bar = None
         for _, row in pdf.iterrows():
+            # 차수 구분 바 표시
             label = "휴식기 또는 기록 외"
             if not cycle_df.empty:
                 for _, c in cycle_df.iterrows():
@@ -160,7 +145,7 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">{label}</div>', unsafe_allow_html=True)
                 current_bar = label
 
-            # 모바일 대응: 날짜줄 옆에 X 버튼 배치
+            # 레이아웃: 기록 카드와 X 버튼 나란히 배치
             col_card, col_del = st.columns([0.88, 0.12])
             with col_del:
                 if st.button("✖", key=f"del_{row['idx']}"):
@@ -168,9 +153,9 @@ with tab3:
                     st.rerun()
 
             with col_card:
-                # 통증 데이터 표시 (에러 방지: 비어있으면 '통증: '만 표시)
-                pain_raw = str(row['통증']).strip()
-                pain_text = f"통증: {pain_raw}/10" if pain_raw not in ["", "nan"] else "통증: "
+                # 통증 데이터 처리 (입력 안 되었을 시 "통증: "만 표시)
+                p_val = str(row['통증']).strip()
+                pain_text = f"통증: {p_val}/10" if p_val not in ["", "nan"] else "통증: "
                 
                 st.markdown(f"""
                 <div class="record-card">
