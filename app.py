@@ -78,6 +78,50 @@ def get_data():
 
 df, c_df = get_data()
 
+# [추가사항] 기록 수정하기 팝업창(Dialog) 구현
+@st.dialog("기록 수정하기")
+def edit_record_dialog(rid, current_val):
+    st.markdown(f"### {pd.to_datetime(current_val['날짜']).strftime('%m월 %d일')} 기록 수정")
+    
+    m_options = ["약 복용", "주사 맞음", "복용 안함"]
+    m_idx = m_options.index(current_val['아침기록']) if current_val['아침기록'] in m_options else 0
+    edit_morning = st.radio("아침 기록", m_options, index=m_idx, horizontal=True)
+    
+    e_options = ["약 복용", "주사 맞음", "복용 안함"]
+    e_idx = e_options.index(current_val['저녁기록']) if current_val['저녁기록'] in e_options else 0
+    edit_evening = st.radio("저녁 기록", e_options, index=e_idx, horizontal=True)
+    
+    try: curr_w = float(current_val['몸무게'])
+    except: curr_w = 55.0
+    try: curr_p = int(current_val['통증'])
+    except: curr_p = 0
+        
+    edit_weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=curr_w, step=0.1)
+    edit_pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=curr_p, step=1)
+    edit_notes = st.text_area("메모", value=current_val['메모'], height=180)
+    
+    if st.button("수정 완료", type="primary", use_container_width=True):
+        try:
+            # 수정 직전 최신 데이터 로드 및 덮어쓰기 에러 검증
+            fresh_df = conn.read(ttl=0).fillna("")
+            if fresh_df.empty:
+                st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '수정 완료' 버튼을 다시 한번만 눌러주세요!")
+            else:
+                for col in fresh_df.columns:
+                    fresh_df[col] = fresh_df[col].map(clean_val)
+                
+                fresh_df.at[rid, "아침기록"] = edit_morning
+                fresh_df.at[rid, "저녁기록"] = edit_evening
+                fresh_df.at[rid, "몸무게"] = str(edit_weight)
+                fresh_df.at[rid, "통증"] = str(int(edit_pain))
+                fresh_df.at[rid, "메모"] = edit_notes
+                
+                conn.update(data=fresh_df)
+                st.success("수정 완료!")
+                st.rerun()
+        except:
+            st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '수정 완료' 버튼을 다시 한번만 눌러주세요!")
+
 # 4. 화면 구성
 st.title("오늘 하루 기록")
 tab1, tab2, tab3, tab4 = st.tabs(["기록하기", "항암 차수", "기록보기", "기록요약"])
@@ -96,13 +140,24 @@ with tab1:
     
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
     pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
-    notes = st.text_area("메모", placeholder="여기에 오늘의 특이사항을 기록해 주세요.")
+    # [수정사항] 메모 입력창 기본 세로 높이를 3배(180)로 확대
+    notes = st.text_area("메모", placeholder="여기에 오늘의 특이사항을 기록해 주세요.", height=180)
 
     if st.button("기록 저장하기", type="primary", use_container_width=True):
-        new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
-        conn.update(data=pd.concat([df.drop(columns=['dt'], errors='ignore'), new_row], ignore_index=True))
-        st.success("저장 완료!")
-        st.rerun()
+        try:
+            # 저장 버튼 클릭 순간 최신 데이터 로딩 상태 체크 (데이터 증발 전면 차단 안전장치)
+            fresh_df = conn.read(ttl=0).fillna("")
+            if fresh_df.empty and not df.empty:
+                st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '기록 저장하기' 버튼을 다시 한번만 눌러주세요!")
+            else:
+                for col in fresh_df.columns:
+                    fresh_df[col] = fresh_df[col].map(clean_val)
+                new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
+                conn.update(data=pd.concat([fresh_df, new_row], ignore_index=True))
+                st.success("저장 완료!")
+                st.rerun()
+        except:
+            st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '기록 저장하기' 버튼을 다시 한번만 눌러주세요!")
 
 with tab2:
     st.subheader("항암 차수 관리")
@@ -150,11 +205,21 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">항암 {item["v"]}차 시작 ({item["ds"]})</div>', unsafe_allow_html=True)
             elif item['type'] == 'rec':
                 v, rid = item['v'], item['id']
-                c1, c2 = st.columns([0.9, 0.1])
-                with c2:
+                # [수정사항] ✏️(만년필) 수정 단축 버튼을 배치하기 위해 컬럼 구조 확장
+                c1, c2, c3 = st.columns([0.8, 0.1, 0.1])
+                with c3:
                     if st.button("❌", key=f"del_{rid}"):
-                        conn.update(data=df.drop(rid).drop(columns=['dt'], errors='ignore'))
-                        st.rerun()
+                        try:
+                            fresh_df = conn.read(ttl=0).fillna("")
+                            if not fresh_df.empty:
+                                conn.update(data=fresh_df.drop(rid).drop(columns=['dt'], errors='ignore'))
+                                st.rerun()
+                        except:
+                            st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. 다시 한번 시도해 주세요.")
+                with c2:
+                    # 만년필 기호 반영 및 파란색 지정을 위한 인라인 스타일 우회 적용
+                    if st.button("🖋️", key=f"edit_trig_{rid}"):
+                        edit_record_dialog(rid, v)
                 with c1:
                     p_val = v.get('통증', '').strip()
                     if p_val == "":
@@ -194,23 +259,10 @@ with tab4:
             recent_df['weight_num'] = pd.to_numeric(recent_df['몸무게'], errors='coerce')
             recent_df['pain_num'] = pd.to_numeric(recent_df['통증'], errors='coerce')
             
-            # X축 표시 날짜 구하기 및 문자열 포맷팅
+            # X축용 데이터 추출 (첫 날짜와 끝 날짜만)
             min_d = recent_df['dt'].min()
             max_d = recent_df['dt'].max()
-            tick_dates = [min_d, max_d]
-            
-            for _, c in c_df.iterrows():
-                sd = pd.to_datetime(c['시작일'], errors='coerce')
-                ed = pd.to_datetime(c['종료일'], errors='coerce')
-                if pd.notnull(sd) and (min_d <= sd <= max_d):
-                    tick_dates.append(sd)
-                if pd.notnull(ed) and (min_d <= ed <= max_d):
-                    tick_dates.append(ed)
-                    
-            tick_dates = sorted(list(set(tick_dates)))
-            tick_strings = [d.strftime('%Y-%m-%d') for d in tick_dates]
-            
-            valid_w = recent_df['weight_num'].dropna()
+            tick_strings = [min_d.strftime('%Y-%m-%d'), max_d.strftime('%Y-%m-%d')]
             
             fig = go.Figure()
 
@@ -235,7 +287,7 @@ with tab4:
                 connectgaps=False
             ))
 
-            # 최신 Plotly 표준 규격으로 레이아웃 빌드 (오류 가능성 전면 차단)
+            # [수정사항] 가로축 날짜 양끝 한정, 세로축 35~55 고정 및 0,5,10 눈금 세팅 완벽 구현
             fig.update_layout(
                 xaxis=dict(
                     type='date',
@@ -245,13 +297,17 @@ with tab4:
                     showgrid=False
                 ),
                 yaxis=dict(
-                    title=dict(text='몸무게 (kg)', font=dict(color='#007BFF')),
+                    title=dict(text='몸무게 (kg)', font=dict(color='#007BFF', size=13)),
                     tickfont=dict(color='#007BFF', size=11),
+                    tickmode='array',
+                    tickvals=[35.0, 45.0, 55.0],
+                    range=[35.0, 55.0],
+                    tickformat='.1f',
                     showgrid=True,
                     gridcolor='#eee'
                 ),
                 yaxis2=dict(
-                    title=dict(text='통증', font=dict(color='#ff4b4b')),
+                    title=dict(text='통증', font=dict(color='#ff4b4b', size=13)),
                     tickfont=dict(color='#ff4b4b', size=11),
                     tickmode='array',
                     tickvals=[0, 5, 10],
@@ -262,26 +318,30 @@ with tab4:
                     showgrid=False
                 ),
                 legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                margin=dict(l=0, r=0, t=40, b=0),
+                margin=dict(l=40, r=40, t=50, b=20),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 hovermode='x unified'
             )
             
-            # 몸무게 맞춤 눈금값 설정 (안전한 개별 함수 제어)
-            if not valid_w.empty:
-                w_max = float(valid_w.max())
-                w_min = float(valid_w.min())
-                if w_max == w_min:
-                    w_ticks = [w_min]
-                else:
-                    w_ticks = [w_min, float((w_min + w_max) / 2), w_max]
-                
-                fig.update_yaxes(
-                    tickmode='array',
-                    tickvals=w_ticks,
-                    tickformat='.1f',
-                    side='left'
-                )
+            # [수정사항] 그래프 위에 세로 점선과 함께 항암 차수 이벤트 얹기
+            for _, c in c_df.iterrows():
+                sd = pd.to_datetime(c['시작일'], errors='coerce')
+                ed = pd.to_datetime(c['종료일'], errors='coerce')
+                if pd.notnull(sd) and (min_d <= sd <= max_d):
+                    fig.add_vline(x=sd.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
+                    fig.add_annotation(
+                        x=sd.strftime('%Y-%m-%d'), y=1.0, yref="paper",
+                        text=f"{c['차수']}차 항암 시작<br>({sd.strftime('%m/%d')})",
+                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=15
+                    )
+                if pd.notnull(ed) and (min_d <= ed <= max_d):
+                    fig.add_vline(x=ed.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
+                    fig.add_annotation(
+                        x=ed.strftime('%Y-%m-%d'), y=1.0, yref="paper",
+                        text=f"{c['차수']}차 항암 종료<br>({ed.strftime('%m/%d')})",
+                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=15
+                    )
 
-            st.plotly_chart(fig, use_container_width=True)
+            # [수정사항] 우측 상단 지저분한 조작 툴바 아이콘들 전부 숨기기
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
