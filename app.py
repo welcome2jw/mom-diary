@@ -1,8 +1,7 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
+from datetime import datetime
 
 # 1. 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
@@ -78,9 +77,9 @@ def get_data():
 
 df, c_df = get_data()
 
-# 4. 화면 구성 (기록요약 탭 추가)
+# 4. 화면 구성
 st.title("오늘 하루 기록")
-tab1, tab2, tab3, tab4 = st.tabs(["기록하기", "항암 차수", "기록보기", "기록요약"])
+tab1, tab2, tab3 = st.tabs(["기록하기", "항암 차수", "기록보기"])
 
 with tab1:
     st.subheader("오늘의 상태 기록")
@@ -156,6 +155,7 @@ with tab3:
                         conn.update(data=df.drop(rid).drop(columns=['dt'], errors='ignore'))
                         st.rerun()
                 with c1:
+                    # [수정] 통증 로직: 값이 아예 없으면 "기록안함", 0 포함 숫자가 있으면 숫자 표시
                     p_val = v.get('통증', '').strip()
                     if p_val == "":
                         p_display = "통증: 기록안함"
@@ -177,111 +177,3 @@ with tab3:
                     st.markdown(html_content, unsafe_allow_html=True)
     else:
         st.info("아직 기록이 없습니다.")
-
-with tab4:
-    st.subheader("최근 30일 기록 요약")
-    
-    if df.empty:
-        st.info("최근 30일 동안의 기록이 없습니다.")
-    else:
-        # 최근 30일 데이터 필터링
-        cutoff_date = datetime.now() - timedelta(days=30)
-        recent_df = df[df['dt'] >= cutoff_date].copy()
-        
-        if recent_df.empty:
-            st.info("최근 30일 동안의 기록이 없습니다.")
-        else:
-            # 시간순 정렬
-            recent_df = recent_df.sort_values('dt')
-            
-            # 숫자형 변환 (기록안함 빈칸은 NaN이 되어 선이 끊어짐)
-            recent_df['weight_num'] = pd.to_numeric(recent_df['몸무게'], errors='coerce')
-            recent_df['pain_num'] = pd.to_numeric(recent_df['통증'], errors='coerce')
-            
-            # 1) X축 표시 날짜 구하기 (시작점, 끝점 + 차수 시작/종료일)
-            min_d = recent_df['dt'].min()
-            max_d = recent_df['dt'].max()
-            tick_dates = [min_d, max_d]
-            
-            for _, c in c_df.iterrows():
-                sd = pd.to_datetime(c['시작일'], errors='coerce')
-                ed = pd.to_datetime(c['종료일'], errors='coerce')
-                if pd.notnull(sd) and (min_d <= sd <= max_d):
-                    tick_dates.append(sd)
-                if pd.notnull(ed) and (min_d <= ed <= max_d):
-                    tick_dates.append(ed)
-                    
-            tick_dates = sorted(list(set(tick_dates))) # 중복 제거 및 정렬
-            
-            # 2) 왼쪽 Y축 (몸무게) 3점 구하기
-            valid_w = recent_df['weight_num'].dropna()
-            if not valid_w.empty:
-                w_max = valid_w.max()
-                w_min = valid_w.min()
-                if w_max == w_min:
-                    w_ticks = [w_min]
-                else:
-                    w_ticks = [w_min, (w_min + w_max) / 2, w_max]
-            else:
-                w_ticks = []
-
-            # 3) 그래프 그리기
-            fig = go.Figure()
-
-            # 몸무게 선 (파란색)
-            fig.add_trace(go.Scatter(
-                x=recent_df['dt'], y=recent_df['weight_num'],
-                mode='lines+markers', name='몸무게 (kg)',
-                line=dict(color='#007BFF', width=3),
-                marker=dict(size=8),
-                connectgaps=False # 데이터가 없으면 선을 끊음
-            ))
-
-            # 통증 선 (빨간색)
-            fig.add_trace(go.Scatter(
-                x=recent_df['dt'], y=recent_df['pain_num'],
-                mode='lines+markers', name='통증',
-                yaxis='y2',
-                line=dict(color='#ff4b4b', width=3),
-                marker=dict(size=8),
-                connectgaps=False # 데이터가 없으면 선을 끊음
-            ))
-
-            # 레이아웃(축) 설정
-            fig.update_layout(
-                xaxis=dict(
-                    tickmode='array',
-                    tickvals=tick_dates,
-                    tickformat='%m/%d',
-                    showgrid=False
-                ),
-                yaxis=dict(
-                    title='몸무게 (kg)',
-                    tickmode='array',
-                    tickvals=w_ticks,
-                    tickformat='.1f',
-                    titlefont=dict(color='#007BFF'),
-                    tickfont=dict(color='#007BFF', size=11),
-                    showgrid=True,
-                    gridcolor='#eee'
-                ),
-                yaxis2=dict(
-                    title='통증',
-                    tickmode='array',
-                    tickvals=[0, 5, 10], # 0, 5, 10만 표시
-                    range=[0, 10],       # 0~10 고정
-                    titlefont=dict(color='#ff4b4b'),
-                    tickfont=dict(color='#ff4b4b', size=11),
-                    anchor='x',
-                    overlaying='y',
-                    side='right',
-                    showgrid=False
-                ),
-                legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                margin=dict(l=0, r=0, t=40, b=0),
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                hovermode='x unified'
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
