@@ -194,7 +194,7 @@ with tab4:
             recent_df['weight_num'] = pd.to_numeric(recent_df['몸무게'], errors='coerce')
             recent_df['pain_num'] = pd.to_numeric(recent_df['통증'], errors='coerce')
             
-            # 1) X축 표시 날짜 구하기 및 호환성 높은 '문자열' 포맷으로 변경
+            # X축 표시 날짜 구하기 및 문자열 포맷팅
             min_d = recent_df['dt'].min()
             max_d = recent_df['dt'].max()
             tick_dates = [min_d, max_d]
@@ -210,13 +210,11 @@ with tab4:
             tick_dates = sorted(list(set(tick_dates)))
             tick_strings = [d.strftime('%Y-%m-%d') for d in tick_dates]
             
-            # 2) 왼쪽 Y축 (몸무게) 유효성 및 타입 검사
             valid_w = recent_df['weight_num'].dropna()
             
-            # 3) 그래프 객체 생성
             fig = go.Figure()
 
-            # 몸무게 선
+            # 몸무게 꺾은선
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['weight_num'],
@@ -226,7 +224,7 @@ with tab4:
                 connectgaps=False
             ))
 
-            # 통증 선
+            # 통증 꺾은선
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['pain_num'],
@@ -237,28 +235,27 @@ with tab4:
                 connectgaps=False
             ))
 
-            # [에러 해결 핵심] 기본 안전 레이아웃 구성
-            layout_kwargs = dict(
+            # 최신 Plotly 표준 규격으로 레이아웃 빌드 (오류 가능성 전면 차단)
+            fig.update_layout(
                 xaxis=dict(
+                    type='date',
                     tickmode='array',
                     tickvals=tick_strings,
                     tickformat='%m/%d',
                     showgrid=False
                 ),
                 yaxis=dict(
-                    title='몸무게 (kg)',
-                    titlefont=dict(color='#007BFF'),
+                    title=dict(text='몸무게 (kg)', font=dict(color='#007BFF')),
                     tickfont=dict(color='#007BFF', size=11),
                     showgrid=True,
                     gridcolor='#eee'
                 ),
                 yaxis2=dict(
-                    title='통증',
+                    title=dict(text='통증', font=dict(color='#ff4b4b')),
+                    tickfont=dict(color='#ff4b4b', size=11),
                     tickmode='array',
                     tickvals=[0, 5, 10],
                     range=[0, 10],
-                    titlefont=dict(color='#ff4b4b'),
-                    tickfont=dict(color='#ff4b4b', size=11),
                     anchor='x',
                     overlaying='y',
                     side='right',
@@ -271,7 +268,7 @@ with tab4:
                 hovermode='x unified'
             )
             
-            # 몸무게 수치가 존재할 때만 3개 점 눈금을 순수 float형태로 주입해 ValueError 차단
+            # 몸무게 맞춤 눈금값 설정 (안전한 개별 함수 제어)
             if not valid_w.empty:
                 w_max = float(valid_w.max())
                 w_min = float(valid_w.min())
@@ -279,9 +276,12 @@ with tab4:
                     w_ticks = [w_min]
                 else:
                     w_ticks = [w_min, float((w_min + w_max) / 2), w_max]
-                layout_kwargs['yaxis']['tickmode'] = 'array'
-                layout_kwargs['yaxis']['tickvals'] = w_ticks
-                layout_kwargs['yaxis']['tickformat'] = '.1f'
+                
+                fig.update_yaxes(
+                    tickmode='array',
+                    tickvals=w_ticks,
+                    tickformat='.1f',
+                    side='left'
+                )
 
-            fig.update_layout(**layout_kwargs)
             st.plotly_chart(fig, use_container_width=True)
