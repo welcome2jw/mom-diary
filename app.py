@@ -260,7 +260,7 @@ with tab4:
             
             fig = go.Figure()
 
-            # [수정사항] 몸무게 선 두께 1.8, 마커 크기 3으로 미세 조정 (Pixel Push)
+            # 몸무게 꺾은선 (두께 1.8 / 마커 3)
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['weight_num'],
@@ -270,7 +270,7 @@ with tab4:
                 connectgaps=False
             ))
 
-            # [수정사항] 통증 선 두께 1.8, 마커 크기 3으로 미세 조정 (Pixel Push)
+            # 통증 꺾은선 (두께 1.8 / 마커 3)
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['pain_num'],
@@ -281,6 +281,7 @@ with tab4:
                 connectgaps=False
             ))
 
+            # [수정사항] 글자들이 아래로 내려오므로 하단 마진(b)을 70으로 늘려 컷팅을 방증함
             fig.update_layout(
                 xaxis=dict(
                     type='date',
@@ -311,29 +312,30 @@ with tab4:
                     showgrid=False
                 ),
                 legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                margin=dict(l=40, r=40, t=50, b=20),
+                margin=dict(l=40, r=40, t=40, b=70),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 hovermode='x unified'
             )
             
-            # [수정사항] 항암 이벤트 글자 노출 고도화 (A안: 시작은 yshift=25로 높게, 종료는 yshift=5로 낮게 격차 분리)
+            # [수정사항] 항암 일정을 가로축 아래 여백(yref="paper", y값 음수 영역)에 지정된 층별 높이로 배치
+            # 시작은 위쪽(y=-0.18), 종료는 아래쪽(y=-0.32)으로 조율하여 오버랩 원천 해결
             for _, c in c_df.iterrows():
                 sd = pd.to_datetime(c['시작일'], errors='coerce')
                 ed = pd.to_datetime(c['종료일'], errors='coerce')
                 if pd.notnull(sd) and (min_d <= sd <= max_d):
                     fig.add_vline(x=sd.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
-                        x=sd.strftime('%Y-%m-%d'), y=1.0, yref="paper",
+                        x=sd.strftime('%Y-%m-%d'), y=-0.18, yref="paper",
                         text=f"{c['차수']}차 시작 ({sd.strftime('%m/%d')})",
-                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=25
+                        showarrow=False, font=dict(size=10, color="#222222"), bgcolor="rgba(240,247,255,0.9)"
                     )
                 if pd.notnull(ed) and (min_d <= ed <= max_d):
                     fig.add_vline(x=ed.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
-                        x=ed.strftime('%Y-%m-%d'), y=1.0, yref="paper",
+                        x=ed.strftime('%Y-%m-%d'), y=-0.32, yref="paper",
                         text=f"{c['차수']}차 종료 ({ed.strftime('%m/%d')})",
-                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=5
+                        showarrow=False, font=dict(size=10, color="#555555"), bgcolor="rgba(245,245,245,0.9)"
                     )
 
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
