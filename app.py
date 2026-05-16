@@ -78,7 +78,7 @@ def get_data():
 
 df, c_df = get_data()
 
-# [추가사항] 기록 수정하기 팝업창(Dialog) 구현
+# 기록 수정하기 팝업창(Dialog) 구현
 @st.dialog("기록 수정하기")
 def edit_record_dialog(rid, current_val):
     st.markdown(f"### {pd.to_datetime(current_val['날짜']).strftime('%m월 %d일')} 기록 수정")
@@ -102,7 +102,6 @@ def edit_record_dialog(rid, current_val):
     
     if st.button("수정 완료", type="primary", use_container_width=True):
         try:
-            # 수정 직전 최신 데이터 로드 및 덮어쓰기 에러 검증
             fresh_df = conn.read(ttl=0).fillna("")
             if fresh_df.empty:
                 st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '수정 완료' 버튼을 다시 한번만 눌러주세요!")
@@ -140,12 +139,10 @@ with tab1:
     
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
     pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
-    # [수정사항] 메모 입력창 기본 세로 높이를 3배(180)로 확대
     notes = st.text_area("메모", placeholder="여기에 오늘의 특이사항을 기록해 주세요.", height=180)
 
     if st.button("기록 저장하기", type="primary", use_container_width=True):
         try:
-            # 저장 버튼 클릭 순간 최신 데이터 로딩 상태 체크 (데이터 증발 전면 차단 안전장치)
             fresh_df = conn.read(ttl=0).fillna("")
             if fresh_df.empty and not df.empty:
                 st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '기록 저장하기' 버튼을 다시 한번만 눌러주세요!")
@@ -205,7 +202,6 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">항암 {item["v"]}차 시작 ({item["ds"]})</div>', unsafe_allow_html=True)
             elif item['type'] == 'rec':
                 v, rid = item['v'], item['id']
-                # [수정사항] ✏️(만년필) 수정 단축 버튼을 배치하기 위해 컬럼 구조 확장
                 c1, c2, c3 = st.columns([0.8, 0.1, 0.1])
                 with c3:
                     if st.button("❌", key=f"del_{rid}"):
@@ -217,7 +213,6 @@ with tab3:
                         except:
                             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. 다시 한번 시도해 주세요.")
                 with c2:
-                    # 만년필 기호 반영 및 파란색 지정을 위한 인라인 스타일 우회 적용
                     if st.button("🖋️", key=f"edit_trig_{rid}"):
                         edit_record_dialog(rid, v)
                 with c1:
@@ -259,35 +254,33 @@ with tab4:
             recent_df['weight_num'] = pd.to_numeric(recent_df['몸무게'], errors='coerce')
             recent_df['pain_num'] = pd.to_numeric(recent_df['통증'], errors='coerce')
             
-            # X축용 데이터 추출 (첫 날짜와 끝 날짜만)
             min_d = recent_df['dt'].min()
             max_d = recent_df['dt'].max()
             tick_strings = [min_d.strftime('%Y-%m-%d'), max_d.strftime('%Y-%m-%d')]
             
             fig = go.Figure()
 
-            # 몸무게 꺾은선
+            # [수정사항] 몸무게 선 두께 1.8, 마커 크기 3으로 미세 조정 (Pixel Push)
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['weight_num'],
                 mode='lines+markers', name='몸무게 (kg)',
-                line=dict(color='#007BFF', width=3),
-                marker=dict(size=8),
+                line=dict(color='#007BFF', width=1.8),
+                marker=dict(size=3),
                 connectgaps=False
             ))
 
-            # 통증 꺾은선
+            # [수정사항] 통증 선 두께 1.8, 마커 크기 3으로 미세 조정 (Pixel Push)
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['pain_num'],
                 mode='lines+markers', name='통증',
                 yaxis='y2',
-                line=dict(color='#ff4b4b', width=3),
-                marker=dict(size=8),
+                line=dict(color='#ff4b4b', width=1.8),
+                marker=dict(size=3),
                 connectgaps=False
             ))
 
-            # [수정사항] 가로축 날짜 양끝 한정, 세로축 35~55 고정 및 0,5,10 눈금 세팅 완벽 구현
             fig.update_layout(
                 xaxis=dict(
                     type='date',
@@ -324,7 +317,7 @@ with tab4:
                 hovermode='x unified'
             )
             
-            # [수정사항] 그래프 위에 세로 점선과 함께 항암 차수 이벤트 얹기
+            # [수정사항] 항암 이벤트 글자 노출 고도화 (A안: 시작은 yshift=25로 높게, 종료는 yshift=5로 낮게 격차 분리)
             for _, c in c_df.iterrows():
                 sd = pd.to_datetime(c['시작일'], errors='coerce')
                 ed = pd.to_datetime(c['종료일'], errors='coerce')
@@ -332,16 +325,15 @@ with tab4:
                     fig.add_vline(x=sd.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
                         x=sd.strftime('%Y-%m-%d'), y=1.0, yref="paper",
-                        text=f"{c['차수']}차 항암 시작<br>({sd.strftime('%m/%d')})",
-                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=15
+                        text=f"{c['차수']}차 시작 ({sd.strftime('%m/%d')})",
+                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=25
                     )
                 if pd.notnull(ed) and (min_d <= ed <= max_d):
                     fig.add_vline(x=ed.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
                         x=ed.strftime('%Y-%m-%d'), y=1.0, yref="paper",
-                        text=f"{c['차수']}차 항암 종료<br>({ed.strftime('%m/%d')})",
-                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=15
+                        text=f"{c['차수']}차 종료 ({ed.strftime('%m/%d')})",
+                        showarrow=False, font=dict(size=10, color="#666666"), bgcolor="rgba(255,255,255,0.8)", yshift=5
                     )
 
-            # [수정사항] 우측 상단 지저분한 조작 툴바 아이콘들 전부 숨기기
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
