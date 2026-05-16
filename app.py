@@ -78,7 +78,7 @@ def get_data():
 
 df, c_df = get_data()
 
-# 4. 화면 구성 (기록요약 탭 추가)
+# 4. 화면 구성
 st.title("오늘 하루 기록")
 tab1, tab2, tab3, tab4 = st.tabs(["기록하기", "항암 차수", "기록보기", "기록요약"])
 
@@ -184,21 +184,17 @@ with tab4:
     if df.empty:
         st.info("최근 30일 동안의 기록이 없습니다.")
     else:
-        # 최근 30일 데이터 필터링
         cutoff_date = datetime.now() - timedelta(days=30)
         recent_df = df[df['dt'] >= cutoff_date].copy()
         
         if recent_df.empty:
             st.info("최근 30일 동안의 기록이 없습니다.")
         else:
-            # 시간순 정렬
             recent_df = recent_df.sort_values('dt')
-            
-            # 숫자형 변환 (기록안함 빈칸은 NaN이 되어 선이 끊어짐)
             recent_df['weight_num'] = pd.to_numeric(recent_df['몸무게'], errors='coerce')
             recent_df['pain_num'] = pd.to_numeric(recent_df['통증'], errors='coerce')
             
-            # 1) X축 표시 날짜 구하기 (시작점, 끝점 + 차수 시작/종료일)
+            # 1) X축 표시 날짜 구하기 및 호환성 높은 '문자열' 포맷으로 변경
             min_d = recent_df['dt'].min()
             max_d = recent_df['dt'].max()
             tick_dates = [min_d, max_d]
@@ -211,55 +207,46 @@ with tab4:
                 if pd.notnull(ed) and (min_d <= ed <= max_d):
                     tick_dates.append(ed)
                     
-            tick_dates = sorted(list(set(tick_dates))) # 중복 제거 및 정렬
+            tick_dates = sorted(list(set(tick_dates)))
+            tick_strings = [d.strftime('%Y-%m-%d') for d in tick_dates]
             
-            # 2) 왼쪽 Y축 (몸무게) 3점 구하기
+            # 2) 왼쪽 Y축 (몸무게) 유효성 및 타입 검사
             valid_w = recent_df['weight_num'].dropna()
-            if not valid_w.empty:
-                w_max = valid_w.max()
-                w_min = valid_w.min()
-                if w_max == w_min:
-                    w_ticks = [w_min]
-                else:
-                    w_ticks = [w_min, (w_min + w_max) / 2, w_max]
-            else:
-                w_ticks = []
-
-            # 3) 그래프 그리기
+            
+            # 3) 그래프 객체 생성
             fig = go.Figure()
 
-            # 몸무게 선 (파란색)
+            # 몸무게 선
             fig.add_trace(go.Scatter(
-                x=recent_df['dt'], y=recent_df['weight_num'],
+                x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
+                y=recent_df['weight_num'],
                 mode='lines+markers', name='몸무게 (kg)',
                 line=dict(color='#007BFF', width=3),
                 marker=dict(size=8),
-                connectgaps=False # 데이터가 없으면 선을 끊음
+                connectgaps=False
             ))
 
-            # 통증 선 (빨간색)
+            # 통증 선
             fig.add_trace(go.Scatter(
-                x=recent_df['dt'], y=recent_df['pain_num'],
+                x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
+                y=recent_df['pain_num'],
                 mode='lines+markers', name='통증',
                 yaxis='y2',
                 line=dict(color='#ff4b4b', width=3),
                 marker=dict(size=8),
-                connectgaps=False # 데이터가 없으면 선을 끊음
+                connectgaps=False
             ))
 
-            # 레이아웃(축) 설정
-            fig.update_layout(
+            # [에러 해결 핵심] 기본 안전 레이아웃 구성
+            layout_kwargs = dict(
                 xaxis=dict(
                     tickmode='array',
-                    tickvals=tick_dates,
+                    tickvals=tick_strings,
                     tickformat='%m/%d',
                     showgrid=False
                 ),
                 yaxis=dict(
                     title='몸무게 (kg)',
-                    tickmode='array',
-                    tickvals=w_ticks,
-                    tickformat='.1f',
                     titlefont=dict(color='#007BFF'),
                     tickfont=dict(color='#007BFF', size=11),
                     showgrid=True,
@@ -268,8 +255,8 @@ with tab4:
                 yaxis2=dict(
                     title='통증',
                     tickmode='array',
-                    tickvals=[0, 5, 10], # 0, 5, 10만 표시
-                    range=[0, 10],       # 0~10 고정
+                    tickvals=[0, 5, 10],
+                    range=[0, 10],
                     titlefont=dict(color='#ff4b4b'),
                     tickfont=dict(color='#ff4b4b', size=11),
                     anchor='x',
@@ -284,4 +271,17 @@ with tab4:
                 hovermode='x unified'
             )
             
+            # 몸무게 수치가 존재할 때만 3개 점 눈금을 순수 float형태로 주입해 ValueError 차단
+            if not valid_w.empty:
+                w_max = float(valid_w.max())
+                w_min = float(valid_w.min())
+                if w_max == w_min:
+                    w_ticks = [w_min]
+                else:
+                    w_ticks = [w_min, float((w_min + w_max) / 2), w_max]
+                layout_kwargs['yaxis']['tickmode'] = 'array'
+                layout_kwargs['yaxis']['tickvals'] = w_ticks
+                layout_kwargs['yaxis']['tickformat'] = '.1f'
+
+            fig.update_layout(**layout_kwargs)
             st.plotly_chart(fig, use_container_width=True)
