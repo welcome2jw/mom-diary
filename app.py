@@ -281,7 +281,7 @@ with tab4:
                 connectgaps=False
             ))
 
-            # [수정사항] 글자들이 아래로 내려오므로 하단 마진(b)을 70으로 늘려 컷팅을 방증함
+            # [해결사항] 하단 마진(b)을 70에서 110으로 대폭 늘려 텍스트 컷팅 완벽 방지
             fig.update_layout(
                 xaxis=dict(
                     type='date',
@@ -312,28 +312,27 @@ with tab4:
                     showgrid=False
                 ),
                 legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                margin=dict(l=40, r=40, t=40, b=70),
+                margin=dict(l=40, r=40, t=40, b=110),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 hovermode='x unified'
             )
             
-            # [수정사항] 항암 일정을 가로축 아래 여백(yref="paper", y값 음수 영역)에 지정된 층별 높이로 배치
-            # 시작은 위쪽(y=-0.18), 종료는 아래쪽(y=-0.32)으로 조율하여 오버랩 원천 해결
+            # [해결사항] 시작과 종료 텍스트의 y 좌표 간격을 조율하여 잘림 없이 층별 배치
             for _, c in c_df.iterrows():
                 sd = pd.to_datetime(c['시작일'], errors='coerce')
                 ed = pd.to_datetime(c['종료일'], errors='coerce')
                 if pd.notnull(sd) and (min_d <= sd <= max_d):
                     fig.add_vline(x=sd.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
-                        x=sd.strftime('%Y-%m-%d'), y=-0.18, yref="paper",
+                        x=sd.strftime('%Y-%m-%d'), y=-0.15, yref="paper",
                         text=f"{c['차수']}차 시작 ({sd.strftime('%m/%d')})",
                         showarrow=False, font=dict(size=10, color="#222222"), bgcolor="rgba(240,247,255,0.9)"
                     )
                 if pd.notnull(ed) and (min_d <= ed <= max_d):
                     fig.add_vline(x=ed.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
-                        x=ed.strftime('%Y-%m-%d'), y=-0.32, yref="paper",
+                        x=ed.strftime('%Y-%m-%d'), y=-0.30, yref="paper",
                         text=f"{c['차수']}차 종료 ({ed.strftime('%m/%d')})",
                         showarrow=False, font=dict(size=10, color="#555555"), bgcolor="rgba(245,245,245,0.9)"
                     )
