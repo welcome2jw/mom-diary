@@ -281,7 +281,7 @@ with tab4:
                 connectgaps=False
             ))
 
-            # [해결사항] 하단 마진 75로 변경
+            # [수정사항] 하단 스페이싱 변경에 따라 도화지 아래 여백을 b=100으로 최적화
             fig.update_layout(
                 xaxis=dict(
                     type='date',
@@ -312,27 +312,27 @@ with tab4:
                     showgrid=False
                 ),
                 legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                margin=dict(l=40, r=40, t=40, b=75),
+                margin=dict(l=40, r=40, t=40, b=100),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 hovermode='x unified'
             )
             
-            # [해결사항] 간격 황금 비율 (시작일 -0.09 / 종료일 -0.17) 적용
+            # [수정사항] 요청 피드백 반영: 시작일 y=-0.15 / 종료일 y=-0.25 로 픽스
             for _, c in c_df.iterrows():
                 sd = pd.to_datetime(c['시작일'], errors='coerce')
                 ed = pd.to_datetime(c['종료일'], errors='coerce')
                 if pd.notnull(sd) and (min_d <= sd <= max_d):
                     fig.add_vline(x=sd.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
-                        x=sd.strftime('%Y-%m-%d'), y=-0.09, yref="paper",
+                        x=sd.strftime('%Y-%m-%d'), y=-0.15, yref="paper",
                         text=f"{c['차수']}차 시작 ({sd.strftime('%m/%d')})",
                         showarrow=False, font=dict(size=10, color="#222222"), bgcolor="rgba(240,247,255,0.9)"
                     )
                 if pd.notnull(ed) and (min_d <= ed <= max_d):
                     fig.add_vline(x=ed.strftime('%Y-%m-%d'), line_width=1.5, line_dash="dash", line_color="#b3b3b3")
                     fig.add_annotation(
-                        x=ed.strftime('%Y-%m-%d'), y=-0.17, yref="paper",
+                        x=ed.strftime('%Y-%m-%d'), y=-0.25, yref="paper",
                         text=f"{c['차수']}차 종료 ({ed.strftime('%m/%d')})",
                         showarrow=False, font=dict(size=10, color="#555555"), bgcolor="rgba(245,245,245,0.9)"
                     )
