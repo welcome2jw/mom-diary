@@ -38,18 +38,17 @@ st.markdown("""
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
+    /* [수정사항] 투명했던 버튼을, 테두리가 있는 깔끔한 실제 버튼 모양으로 변경 */
     button[kind="secondary"] {
-        background-color: transparent !important;
-        background: transparent !important;
-        border: none !important;
-        color: #ff4b4b !important;
-        box-shadow: none !important;
-        font-size: 22px !important;
-        padding: 0 !important;
+        background-color: #ffffff !important;
+        border: 1px solid #d1d5db !important;
+        border-radius: 6px !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        font-weight: bold !important;
     }
     button[kind="secondary"]:hover {
-        color: #d32f2f !important;
-        background-color: transparent !important;
+        background-color: #f3f4f6 !important;
+        border-color: #9ca3af !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -202,10 +201,12 @@ with tab3:
                 st.markdown(f'<div class="cycle-header">항암 {item["v"]}차 시작 ({item["ds"]})</div>', unsafe_allow_html=True)
             elif item['type'] == 'rec':
                 v, rid = item['v'], item['id']
-                c1, c2, c3 = st.columns([0.8, 0.1, 0.1])
+                
+                # [수정사항] 텍스트가 잘리지 않도록 버튼 컬럼 비율을 0.15로 아주 살짝 여유 있게 변경
+                c1, c2, c3 = st.columns([0.7, 0.15, 0.15])
                 with c3:
-                    # [수정사항] ❌ 이모지를 "삭제" 텍스트로 변경
-                    if st.button("삭제", key=f"del_{rid}"):
+                    # [수정사항] 삭제는 빨간색 텍스트로 지정 (:red)
+                    if st.button(":red[삭제]", key=f"del_{rid}", use_container_width=True):
                         try:
                             fresh_df = conn.read(ttl=0).fillna("")
                             if not fresh_df.empty:
@@ -214,8 +215,8 @@ with tab3:
                         except:
                             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. 다시 한번 시도해 주세요.")
                 with c2:
-                    # [수정사항] 🖋️ 이모지를 "수정" 텍스트로 변경
-                    if st.button("수정", key=f"edit_trig_{rid}"):
+                    # [수정사항] 수정은 파란색 텍스트로 지정 (:blue)
+                    if st.button(":blue[수정]", key=f"edit_trig_{rid}", use_container_width=True):
                         edit_record_dialog(rid, v)
                 with c1:
                     p_val = v.get('통증', '').strip()
