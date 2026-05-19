@@ -204,7 +204,8 @@ with tab3:
                 v, rid = item['v'], item['id']
                 c1, c2, c3 = st.columns([0.8, 0.1, 0.1])
                 with c3:
-                    if st.button("❌", key=f"del_{rid}"):
+                    # [수정사항] ❌ 이모지를 "삭제" 텍스트로 변경
+                    if st.button("삭제", key=f"del_{rid}"):
                         try:
                             fresh_df = conn.read(ttl=0).fillna("")
                             if not fresh_df.empty:
@@ -213,7 +214,8 @@ with tab3:
                         except:
                             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. 다시 한번 시도해 주세요.")
                 with c2:
-                    if st.button("🖋️", key=f"edit_trig_{rid}"):
+                    # [수정사항] 🖋️ 이모지를 "수정" 텍스트로 변경
+                    if st.button("수정", key=f"edit_trig_{rid}"):
                         edit_record_dialog(rid, v)
                 with c1:
                     p_val = v.get('통증', '').strip()
@@ -260,7 +262,6 @@ with tab4:
             
             fig = go.Figure()
 
-            # 몸무게 꺾은선 (두께 1.8 / 마커 3)
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['weight_num'],
@@ -270,7 +271,6 @@ with tab4:
                 connectgaps=False
             ))
 
-            # 통증 꺾은선 (두께 1.8 / 마커 3)
             fig.add_trace(go.Scatter(
                 x=recent_df['dt'].dt.strftime('%Y-%m-%d'),
                 y=recent_df['pain_num'],
@@ -281,7 +281,6 @@ with tab4:
                 connectgaps=False
             ))
 
-            # [수정사항] 하단 스페이싱 변경에 따라 도화지 아래 여백을 b=100으로 최적화
             fig.update_layout(
                 xaxis=dict(
                     type='date',
@@ -318,7 +317,6 @@ with tab4:
                 hovermode='x unified'
             )
             
-            # [수정사항] 요청 피드백 반영: 시작일 y=-0.15 / 종료일 y=-0.25 로 픽스
             for _, c in c_df.iterrows():
                 sd = pd.to_datetime(c['시작일'], errors='coerce')
                 ed = pd.to_datetime(c['종료일'], errors='coerce')
