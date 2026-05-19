@@ -94,6 +94,9 @@ def edit_record_dialog(rid, current_val):
     except: curr_w = 55.0
     try: curr_p = int(current_val['통증'])
     except: curr_p = 0
+    
+    # [에러 방지] 시트에 잘못된 값이 있어도 앱이 튕기지 않도록 30.0 ~ 120.0 범위로 고정
+    curr_w = max(30.0, min(120.0, curr_w))
         
     edit_weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=curr_w, step=0.1)
     edit_pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=curr_p, step=1)
@@ -135,6 +138,9 @@ with tab1:
     if not df.empty:
         ws = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
         if not ws.empty: last_w = float(ws.iloc[-1])
+    
+    # [에러 방지] 시트에 잘못된 값이 있어도 앱이 튕기지 않도록 30.0 ~ 120.0 범위로 고정
+    last_w = max(30.0, min(120.0, last_w))
     
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
     pain = st.number_input("통증 정도 (0~10)", min_value=0, max_value=10, value=0, step=1)
