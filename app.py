@@ -3,7 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
-import time  # [추가] 팝업창 닫힘 대기 시간을 위한 모듈
+import time  
 
 # 1. 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
@@ -56,7 +56,10 @@ st.markdown("""
 
 # 3. 데이터 로드 및 클리닝
 def clean_val(val):
-    s = str(val).replace('.0', '').strip()
+    s = str(val).strip()
+    # [수정] 49.09 같은 숫자가 망가지지 않도록, 문자열 '끝'이 .0일 때만 제거
+    if s.endswith('.0'):
+        s = s[:-2]
     if s.lower() in ['nan', 'none', 'nat', '']: return ""
     return s
 
@@ -73,7 +76,7 @@ def get_data():
         if not m_df.empty:
             m_df['dt'] = pd.to_datetime(m_df['날짜'], errors='coerce')
         return m_df, c_df
-    except Exception: # [수정] 진짜 에러만 잡도록 변경
+    except Exception:
         return pd.DataFrame(), pd.DataFrame(columns=["차수", "시작일", "종료일"])
 
 df, c_df = get_data()
@@ -119,10 +122,11 @@ def edit_record_dialog(rid, current_val):
                 fresh_df.at[rid, "메모"] = edit_notes
                 
                 conn.update(data=fresh_df)
-                st.success("✅ 수정 완료! 잠시 후 창이 닫힙니다.")
-                time.sleep(1.5) # [수정] 성공 메시지를 1.5초 띄워둔 후 창 닫음
+                # [수정] 이모지 제거
+                st.success("수정 완료! 잠시 후 창이 닫힙니다.")
+                time.sleep(1.5)
                 st.rerun()
-        except Exception: # [수정] 창 닫힘 충돌 해결
+        except Exception: 
             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '수정 완료' 버튼을 다시 한번만 눌러주세요!")
 
 # 4. 화면 구성
@@ -158,10 +162,11 @@ with tab1:
                     fresh_df[col] = fresh_df[col].map(clean_val)
                 new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
                 conn.update(data=pd.concat([fresh_df, new_row], ignore_index=True))
-                st.success("✅ 저장 완료! 잠시 후 새로고침됩니다.")
-                time.sleep(1.5) # [수정] 성공 메시지를 1.5초 띄워둔 후 닫음
+                # [수정] 이모지 제거
+                st.success("저장 완료! 잠시 후 새로고침됩니다.")
+                time.sleep(1.5)
                 st.rerun()
-        except Exception: # [수정] 진짜 에러만 잡도록 변경
+        except Exception:
             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '기록 저장하기' 버튼을 다시 한번만 눌러주세요!")
 
 with tab2:
@@ -223,7 +228,7 @@ with tab3:
                                 st.success("삭제 완료!")
                                 time.sleep(1.0)
                                 st.rerun()
-                        except Exception: # [수정] 진짜 에러만 잡도록 변경
+                        except Exception:
                             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. 다시 한번 시도해 주세요.")
                 with c2:
                     # 수정은 파란색 텍스트로 지정 (:blue)
