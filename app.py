@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+import time  # [추가] 팝업창 닫힘 대기 시간을 위한 모듈
 
 # 1. 페이지 설정
 st.set_page_config(page_title="오늘 하루 기록", layout="centered")
@@ -38,7 +39,7 @@ st.markdown("""
     }
     .weight-box { font-size: 26px; font-weight: 800; color: #007BFF !important; }
     
-    /* [수정사항] 투명했던 버튼을, 테두리가 있는 깔끔한 실제 버튼 모양으로 변경 */
+    /* 투명했던 버튼을, 테두리가 있는 깔끔한 실제 버튼 모양으로 변경 */
     button[kind="secondary"] {
         background-color: #ffffff !important;
         border: 1px solid #d1d5db !important;
@@ -72,7 +73,7 @@ def get_data():
         if not m_df.empty:
             m_df['dt'] = pd.to_datetime(m_df['날짜'], errors='coerce')
         return m_df, c_df
-    except:
+    except Exception: # [수정] 진짜 에러만 잡도록 변경
         return pd.DataFrame(), pd.DataFrame(columns=["차수", "시작일", "종료일"])
 
 df, c_df = get_data()
@@ -95,7 +96,7 @@ def edit_record_dialog(rid, current_val):
     try: curr_p = int(current_val['통증'])
     except: curr_p = 0
     
-    # [에러 방지] 시트에 잘못된 값이 있어도 앱이 튕기지 않도록 30.0 ~ 120.0 범위로 고정
+    # 시트에 잘못된 값이 있어도 앱이 튕기지 않도록 30.0 ~ 120.0 범위로 고정
     curr_w = max(30.0, min(120.0, curr_w))
         
     edit_weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=curr_w, step=0.1)
@@ -118,9 +119,10 @@ def edit_record_dialog(rid, current_val):
                 fresh_df.at[rid, "메모"] = edit_notes
                 
                 conn.update(data=fresh_df)
-                st.success("수정 완료!")
+                st.success("✅ 수정 완료! 잠시 후 창이 닫힙니다.")
+                time.sleep(1.5) # [수정] 성공 메시지를 1.5초 띄워둔 후 창 닫음
                 st.rerun()
-        except:
+        except Exception: # [수정] 창 닫힘 충돌 해결
             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '수정 완료' 버튼을 다시 한번만 눌러주세요!")
 
 # 4. 화면 구성
@@ -139,7 +141,7 @@ with tab1:
         ws = pd.to_numeric(df['몸무게'], errors='coerce').dropna()
         if not ws.empty: last_w = float(ws.iloc[-1])
     
-    # [에러 방지] 시트에 잘못된 값이 있어도 앱이 튕기지 않도록 30.0 ~ 120.0 범위로 고정
+    # 시트에 잘못된 값이 있어도 앱이 튕기지 않도록 30.0 ~ 120.0 범위로 고정
     last_w = max(30.0, min(120.0, last_w))
     
     weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=120.0, value=last_w, step=0.1)
@@ -156,9 +158,10 @@ with tab1:
                     fresh_df[col] = fresh_df[col].map(clean_val)
                 new_row = pd.DataFrame([{"날짜": datetime.now().strftime('%Y-%m-%d'), "아침기록": morning, "저녁기록": evening, "몸무게": weight, "통증": int(pain), "메모": notes}])
                 conn.update(data=pd.concat([fresh_df, new_row], ignore_index=True))
-                st.success("저장 완료!")
+                st.success("✅ 저장 완료! 잠시 후 새로고침됩니다.")
+                time.sleep(1.5) # [수정] 성공 메시지를 1.5초 띄워둔 후 닫음
                 st.rerun()
-        except:
+        except Exception: # [수정] 진짜 에러만 잡도록 변경
             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. '기록 저장하기' 버튼을 다시 한번만 눌러주세요!")
 
 with tab2:
@@ -208,20 +211,22 @@ with tab3:
             elif item['type'] == 'rec':
                 v, rid = item['v'], item['id']
                 
-                # [수정사항] 텍스트가 잘리지 않도록 버튼 컬럼 비율을 0.15로 아주 살짝 여유 있게 변경
+                # 텍스트가 잘리지 않도록 버튼 컬럼 비율을 0.15로 아주 살짝 여유 있게 변경
                 c1, c2, c3 = st.columns([0.7, 0.15, 0.15])
                 with c3:
-                    # [수정사항] 삭제는 빨간색 텍스트로 지정 (:red)
+                    # 삭제는 빨간색 텍스트로 지정 (:red)
                     if st.button(":red[삭제]", key=f"del_{rid}", use_container_width=True):
                         try:
                             fresh_df = conn.read(ttl=0).fillna("")
                             if not fresh_df.empty:
                                 conn.update(data=fresh_df.drop(rid).drop(columns=['dt'], errors='ignore'))
+                                st.success("삭제 완료!")
+                                time.sleep(1.0)
                                 st.rerun()
-                        except:
+                        except Exception: # [수정] 진짜 에러만 잡도록 변경
                             st.error("⚠️ 인터넷 연결이 잠시 끊겼습니다. 다시 한번 시도해 주세요.")
                 with c2:
-                    # [수정사항] 수정은 파란색 텍스트로 지정 (:blue)
+                    # 수정은 파란색 텍스트로 지정 (:blue)
                     if st.button(":blue[수정]", key=f"edit_trig_{rid}", use_container_width=True):
                         edit_record_dialog(rid, v)
                 with c1:
